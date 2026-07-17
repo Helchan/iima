@@ -33,12 +33,18 @@ if [[ ! -d "$sparkle_target" ]]; then
   mkdir -p "$extracted"
   tar -xJf "$archive" -C "$extracted"
   source_xcframework="$(find "$extracted" -type d -name Sparkle.xcframework -print -quit)"
-  if [[ -z "$source_xcframework" ]]; then
-    echo "Sparkle.xcframework was not found in $archive" >&2
+  if [[ -n "$source_xcframework" ]]; then
+    mkdir -p "$sparkle_artifact_root"
+    cp -R "$source_xcframework" "$sparkle_target"
+  elif [[ -d "$extracted/Sparkle.framework" ]]; then
+    mkdir -p "$sparkle_target/macos-arm64_x86_64"
+    cp -R \
+      "$extracted/Sparkle.framework" \
+      "$sparkle_target/macos-arm64_x86_64/Sparkle.framework"
+  else
+    echo "Sparkle framework was not found in $archive" >&2
     exit 1
   fi
-  mkdir -p "$sparkle_artifact_root"
-  cp -R "$source_xcframework" "$sparkle_target"
 fi
 
 test -f "$reference_root/Configs/Deployment.xcconfig"
