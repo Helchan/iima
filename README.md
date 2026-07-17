@@ -106,12 +106,16 @@ Current local `0.9.0` package evidence:
 
 ## GitHub Actions packages
 
-`.github/workflows/build-packages.yml` builds two downloadable workflow artifacts on pushes to
-`main`, pull requests, and manual runs:
+Pushing a version tag such as `v0.9.0` runs `.github/workflows/build-packages.yml`. The workflow
+requires the tag to exactly match the version in `package.json` and `src-tauri/tauri.conf.json`,
+builds both platforms, and then publishes a GitHub Release with three permanent downloads:
 
-- `IINA-windows-x64`: an unsigned NSIS x64 installer built on `windows-latest`;
-- `IINA-macos-arm64`: an ad-hoc-signed arm64 `.app` archive and verified DMG built on the Apple
-  Silicon `macos-15` runner.
+- an unsigned Windows x64 NSIS installer built on `windows-latest`;
+- an ad-hoc-signed macOS arm64 `.app` ZIP;
+- a verified macOS arm64 DMG built on the Apple Silicon `macos-15` runner.
+
+Pull requests and manual workflow runs still build downloadable Actions artifacts for validation,
+but only a pushed `v*` tag creates a GitHub Release.
 
 The 2.6 GiB local `参考/` workspace is intentionally ignored. The macOS job recreates only its
 required inputs from the pinned IINA commit and Sparkle release by running
