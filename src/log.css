@@ -1,0 +1,138 @@
+:root {
+  color-scheme: light dark;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-size: 13px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: Canvas;
+  color: CanvasText;
+}
+
+.log-window {
+  display: grid;
+  grid-template-rows: 35px minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+}
+
+.log-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px 2px;
+}
+
+.log-toolbar label + select {
+  margin-right: 8px;
+}
+
+.log-toolbar select {
+  min-width: 88px;
+  height: 25px;
+}
+
+#log-subsystem {
+  min-width: 55px;
+  max-width: 190px;
+}
+
+#log-save {
+  min-width: 83px;
+  height: 25px;
+  margin-left: auto;
+}
+
+.log-table {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, CanvasText 28%, transparent);
+  outline: none;
+  background: color-mix(in srgb, Canvas 97%, CanvasText 3%);
+}
+
+.log-table-header,
+.log-row {
+  display: grid;
+  grid-template-columns: 27px 107px minmax(80px, 117px) minmax(240px, 1fr);
+}
+
+.log-table-header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  height: 28px;
+  background: color-mix(in srgb, Canvas 91%, CanvasText 9%);
+  box-shadow: 0 1px color-mix(in srgb, CanvasText 28%, transparent);
+}
+
+.log-table-header > div {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0 8px;
+  border-right: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.log-row {
+  min-height: 19px;
+  cursor: default;
+  user-select: none;
+}
+
+.log-row:nth-child(even) {
+  background: color-mix(in srgb, Canvas 94%, CanvasText 6%);
+}
+
+.log-row[aria-selected="true"] {
+  color: white;
+  background: #0a84ff;
+}
+
+.log-cell {
+  min-width: 0;
+  padding: 2px 8px;
+  overflow: hidden;
+  font: 11px/15px Menlo, Monaco, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.log-cell--message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.log-level-dot {
+  align-self: center;
+  justify-self: center;
+  width: 9px;
+  height: 9px;
+  border: 1.25px solid color-mix(in srgb, currentColor 55%, transparent);
+  border-radius: 50%;
+  background: #d1d1d6;
+}
+
+.log-row[data-level="1"] .log-level-dot {
+  background: #30d158;
+}
+
+.log-row[data-level="2"] .log-level-dot {
+  background: #ffd60a;
+}
+
+.log-row[data-level="3"] .log-level-dot {
+  background: #ff453a;
+}

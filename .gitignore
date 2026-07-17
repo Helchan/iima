@@ -1,0 +1,14 @@
+.DS_Store
+.idea/
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+参考/
+.cache/
+*.log
+*.dmg
+*.zip
+*.tar.xz
+*.msi
+*-setup.exe

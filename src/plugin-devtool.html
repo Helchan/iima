@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Plugin Developer Tool</title>
+    <link rel="stylesheet" href="./plugin-devtool.css" />
+  </head>
+  <body>
+    <main class="developer-tool" aria-label="Plugin JavaScript Developer Tool">
+      <ol id="developer-history" class="developer-history" aria-live="polite"></ol>
+      <div id="developer-splitter" class="developer-splitter" role="separator" aria-orientation="horizontal" aria-label="Resize console"></div>
+      <section class="developer-console" aria-label="JavaScript console">
+        <div class="developer-toolbar">
+          <button id="developer-run" class="developer-toolbar-button developer-run" type="button" title="Run code" aria-label="Run code">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 6.5 14 10 8 13.5Z" fill="currentColor"/></svg>
+          </button>
+          <button id="developer-global" class="developer-toolbar-button" type="button" title="Print global objects" aria-label="Print global objects">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4 4.5 14h11Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 1.4"/><circle cx="10" cy="4" r="2" fill="currentColor"/><circle cx="4.5" cy="14" r="2" fill="currentColor"/><circle cx="15.5" cy="14" r="2" fill="currentColor"/></svg>
+          </button>
+          <button id="developer-clear" class="developer-toolbar-button" type="button" title="Clear history" aria-label="Clear history">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 12 6-7 4 3.5-6 7H5Z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9 15.5h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
+          <span class="developer-shortcut">Cmd+Return to run code</span>
+        </div>
+        <textarea id="developer-input" class="developer-input" spellcheck="false" aria-label="JavaScript source"></textarea>
+      </section>
+    </main>
+    <script type="module" src="./plugin-devtool.js"></script>
+  </body>
+</html>

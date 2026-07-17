@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-i18n-table="InspectorWindowController" data-i18n-key="F0z-JX-Cv5.title">Inspector</title>
+    <link rel="stylesheet" href="./inspector.css" />
+  </head>
+  <body>
+    <main class="inspector-window" aria-label="Inspector">
+      <nav class="segmented-tabs" role="tablist" aria-label="Inspector">
+        <button type="button" role="tab" aria-selected="true" aria-controls="pane-general" data-tab="general" data-i18n-table="InspectorWindowController" data-i18n-key="Fqo-1c-3L1.ibShadowedLabels[0]">General</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="pane-tracks" data-tab="tracks" data-i18n-table="InspectorWindowController" data-i18n-key="Fqo-1c-3L1.ibShadowedLabels[1]">Tracks</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="pane-file" data-tab="file" data-i18n-table="InspectorWindowController" data-i18n-key="Fqo-1c-3L1.ibShadowedLabels[2]">File</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="pane-status" data-tab="status" data-i18n-table="InspectorWindowController" data-i18n-key="Fqo-1c-3L1.ibShadowedLabels[3]">Status</button>
+      </nav>
+
+      <section id="pane-general" class="inspector-pane inspector-pane--general" role="tabpanel" data-pane="general">
+        <section class="property-section">
+          <h2 data-i18n-table="InspectorWindowController" data-i18n-key="gDG-Eq-1Bc.title">VIDEO</h2>
+          <dl class="property-grid">
+            <dt data-i18n-table="InspectorWindowController" data-i18n-key="PQD-yB-mm6.title">Format:</dt><dd data-general="video.format">N/A</dd>
+            <dt data-i18n-table="InspectorWindowController" data-i18n-key="f2P-qb-wRx.title">Size:</dt><dd data-general="video.size">N/A</dd>
+            <dt data-i18n-table="InspectorWindowController" data-i18n-key="A4y-LL-x0z.title">Bit Rate:</dt><dd data-general="video.bitRate">N/A</dd>
+            <dt data-i18n-table="InspectorWindowController" data-i18n-key="bki-sE-xCA.title">Codec:</dt><dd data-general="video.codec">N/A</dd>
+            <dt data-i18n-table="InspectorWindowController" data-i18n-key="DHh-ne-10f.title">Hw Decoder:</dt><dd data-general="video.hardwareDecoder">N/A</dd>
+            <dt data-i18n-table="InspectorWindowController" data-i18n-key="I2E-6Z-Gnn.title">Driver:</dt><dd data-general="video.driver">N/A</dd>
+            <dt data-i18n-table="InspectorWindowController" data-i18n-key="1kw-LO-KmJ.title">Primaries:</dt><dd data-general="video.primaries">N/A</dd>
+            <dt data-i18n-table="InspectorWindowController" data-i18n-key="7QX-tu-rvs.title">FPS:</dt><dd data-general="video.fps">N/A</dd>
+            <dt data-i18n-table="InspectorWindowController" data-i18n-key="mLo-Wc-BoO.title">Colorspace:</dt><dd data-general="video.colorspace">N/A</dd>
+            <dt data-i18n-table="InspectorWindowController" data-i18n-key="UrR-u2-hFz.title">Pixel Format:</dt><dd data-general="video.pixelFormat">N/A</dd>
+          </dl>
+        </section>
+
+        <section class="property-section">
+          <h2 data-i18n-table="InspectorWindowController" data-i18n-key="nrG-IH-kFg.title">AUDIO</h2>
+          <dl class="property-grid">
+            <dt data-i18n-table="InspectorWindowController" data-i18n-key="5H6-qJ-RDS.title">Format:</dt><dd data-general="audio.format">N/A</dd>
+            <dt data-i18n-table="InspectorWindowController" data-i18n-key="it3-05-Pwu.title">Channels:</dt><dd data-general="audio.channels">N/A</dd>
+            <dt data-i18n-table="InspectorWindowController" data-i18n-key="jyV-Pd-UvH.title">Bit Rate:</dt><dd data-general="audio.bitRate">N/A</dd>
+            <dt data-i18n-table="InspectorWindowController" data-i18n-key="n0s-eM-42w.title">Codec:</dt><dd data-general="audio.codec">N/A</dd>
+            <dt data-i18n-table="InspectorWindowController" data-i18n-key="MME-KZ-jrG.title">Driver:</dt><dd data-general="audio.driver">N/A</dd>
+            <dt data-i18n-table="InspectorWindowController" data-i18n-key="llF-4b-Z8b.title">Sample Rate:</dt><dd data-general="audio.sampleRate">N/A</dd>
+          </dl>
+        </section>
+      </section>
+
+      <section id="pane-tracks" class="inspector-pane" role="tabpanel" data-pane="tracks" hidden>
+        <label class="track-picker-label" for="track-picker" data-i18n-table="InspectorWindowController" data-i18n-key="f7i-wX-uxQ.title">Track:</label>
+        <select id="track-picker" class="track-picker" aria-label="Track"></select>
+        <dl class="property-grid property-grid--tracks">
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="mZG-ik-Led.title">ID:</dt><dd data-track="id">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="dtn-wS-j6U.title">Properties:</dt><dd class="track-properties" data-track="properties">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="jCY-og-BAa.title">Source ID:</dt><dd data-track="sourceId">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="9eq-rd-zGy.title">Title:</dt><dd data-track="title">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="FIw-CH-b05.title">Language:</dt><dd data-track="language">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="Jxp-Wf-BhU.title">File Path:</dt><dd data-track="filePath">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="daB-hU-mku.title">Codec:</dt><dd data-track="codec">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="xix-0S-ehE.title">Decoder:</dt><dd data-track="decoder">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="1dz-Vt-0MO.title">FPS:</dt><dd data-track="fps">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="Luq-rQ-aO4.title">Channels:</dt><dd data-track="channels">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="vrP-XL-Weg.title">Sample Rate:</dt><dd data-track="sampleRate">N/A</dd>
+        </dl>
+      </section>
+
+      <section id="pane-file" class="inspector-pane" role="tabpanel" data-pane="file" hidden>
+        <dl class="property-grid property-grid--file">
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="4jf-w4-kkv.title">File path:</dt><dd class="file-path" data-file="path">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="KqD-NM-WiK.title">Size:</dt><dd data-file="size">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="mgl-Et-20K.title">Format:</dt><dd data-file="format">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="OCm-zb-deg.title">Duration:</dt><dd data-file="duration">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="PBk-VC-4gu.title">Chapters:</dt><dd data-file="chapters">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="POj-mQ-zP9.title">Editions:</dt><dd data-file="editions">N/A</dd>
+        </dl>
+      </section>
+
+      <section id="pane-status" class="inspector-pane inspector-pane--status" role="tabpanel" data-pane="status" hidden>
+        <dl class="property-grid property-grid--status">
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="iVK-Ck-Lyq.title">A/V Sync Diff:</dt><dd data-status="avSyncDifference">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="sbO-Cn-gpI.title">Total A/V Sync:</dt><dd data-status="totalAvSync">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="CrF-UR-udW.title">Dropped Frames:</dt><dd data-status="droppedFrames">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="AYt-pH-UCi.title">Mistimed Frames:</dt><dd data-status="mistimedFrames">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="AjU-1T-aGR.title">Display FPS:</dt><dd data-status="displayFps">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="g8p-Ec-awO.title">Estimated Output FPS:</dt><dd data-status="estimatedOutputFps">N/A</dd>
+          <dt data-i18n-table="InspectorWindowController" data-i18n-key="JN9-3E-OJp.title">Estimated Disp FPS</dt><dd data-status="estimatedDisplayFps">N/A</dd>
+        </dl>
+
+        <div class="watch-heading" data-i18n-table="InspectorWindowController" data-i18n-key="tNS-gW-PcC.title">Watch</div>
+        <div class="watch-table" role="grid" aria-label="Watch">
+          <div class="watch-header" role="row"><span role="columnheader" aria-label="Property"></span><span role="columnheader" aria-label="Value"></span></div>
+          <div id="watch-rows" class="watch-rows"></div>
+        </div>
+        <div class="watch-toolbar">
+          <button id="watch-add" type="button" aria-label="Add">+</button>
+          <button id="watch-remove" type="button" aria-label="Remove" disabled>−</button>
+          <span id="runtime-state" class="runtime-state" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <div id="inspector-error" class="inspector-error" role="alert" hidden></div>
+    </main>
+
+    <dialog id="watch-dialog" class="watch-dialog">
+      <form method="dialog">
+        <label for="watch-property" data-i18n-table="Localizable" data-i18n-key="alert.add_watch.title">Add Watch Property</label>
+        <p data-i18n-table="Localizable" data-i18n-key="alert.add_watch.message">Please enter a valid mpv property name.</p>
+        <input id="watch-property" name="property" maxlength="96" autocomplete="off" spellcheck="false" />
+        <div class="dialog-actions">
+          <button value="cancel">Cancel</button>
+          <button id="watch-dialog-add" value="default">Add</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="./inspector.js"></script>
+  </body>
+</html>

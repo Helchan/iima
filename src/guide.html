@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Release Highlights</title>
+    <link rel="stylesheet" href="./guide.css" />
+  </head>
+  <body>
+    <main class="guide-window" aria-label="Release Highlights">
+      <section class="guide-content">
+        <iframe
+          id="guide-highlights"
+          class="guide-highlights"
+          src="https://iina.io/highlights/1.3.5/"
+          title="IINA 1.3.5 Release Highlights"
+          hidden
+        ></iframe>
+        <div id="guide-loading" class="guide-loading" role="status" aria-label="Loading"></div>
+        <section id="guide-failed" class="guide-failed" role="alert" hidden>
+          <p>Failed to load highlights. Please visit our website https://iina.io for more information.</p>
+          <button id="guide-website" type="button">Website</button>
+        </section>
+      </section>
+      <footer class="guide-footer">
+        <button id="guide-continue" class="guide-continue" type="button">Continue</button>
+      </footer>
+    </main>
+    <script type="module" src="./guide.js"></script>
+  </body>
+</html>

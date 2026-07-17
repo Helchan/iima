@@ -1,0 +1,87 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "IINA",
+  "version": "0.9.0",
+  "identifier": "io.iima.player",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "IINA",
+        "width": 640,
+        "height": 400,
+        "minWidth": 640,
+        "minHeight": 400,
+        "resizable": false,
+        "center": true,
+        "visible": false,
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$TEMP/iima-thumbnails/**",
+          "$APPCACHE/screenshot_cache/**"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": [
+      "icons/16x16.png",
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "entitlements": "IINA.entitlements",
+      "infoPlist": "IINA-Info.plist",
+      "files": {
+        "Resources/dsa_pub.pem": "../参考/iina/iina/dsa_pub.pem",
+        "Resources/doc_3gp.icns": "icons/doc/doc_3gp.icns",
+        "Resources/doc_aac.icns": "icons/doc/doc_aac.icns",
+        "Resources/doc_asf.icns": "icons/doc/doc_asf.icns",
+        "Resources/doc_avi.icns": "icons/doc/doc_avi.icns",
+        "Resources/doc_flac.icns": "icons/doc/doc_flac.icns",
+        "Resources/doc_flv.icns": "icons/doc/doc_flv.icns",
+        "Resources/doc_gif.icns": "icons/doc/doc_gif.icns",
+        "Resources/doc_list.icns": "icons/doc/doc_list.icns",
+        "Resources/doc_m4a.icns": "icons/doc/doc_m4a.icns",
+        "Resources/doc_mkv.icns": "icons/doc/doc_mkv.icns",
+        "Resources/doc_mp3.icns": "icons/doc/doc_mp3.icns",
+        "Resources/doc_mp4.icns": "icons/doc/doc_mp4.icns",
+        "Resources/doc_ogg.icns": "icons/doc/doc_ogg.icns",
+        "Resources/doc_other_a.icns": "icons/doc/doc_other_a.icns",
+        "Resources/doc_other_v.icns": "icons/doc/doc_other_v.icns",
+        "Resources/doc_plugin.icns": "icons/doc/doc_plugin.icns",
+        "Resources/doc_qt.icns": "icons/doc/doc_qt.icns",
+        "Resources/doc_rm.icns": "icons/doc/doc_rm.icns",
+        "Resources/doc_ts.icns": "icons/doc/doc_ts.icns",
+        "Resources/doc_wav.icns": "icons/doc/doc_wav.icns",
+        "Resources/doc_webm.icns": "icons/doc/doc_webm.icns",
+        "Resources/doc_wmv.icns": "icons/doc/doc_wmv.icns"
+      }
+    }
+  }
+}

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Playback History</title>
+    <link rel="stylesheet" href="./history.css" />
+  </head>
+  <body>
+    <main class="history-window" aria-label="Playback History">
+      <header class="history-toolbar">
+        <label for="history-group-by">Group by:</label>
+        <select id="history-group-by">
+          <option value="date">Date</option>
+          <option value="folder">Folder</option>
+        </select>
+        <div class="history-search">
+          <button
+            id="history-search-options-button"
+            class="history-search-options-button"
+            type="button"
+            aria-label="Search options"
+            aria-haspopup="menu"
+            aria-expanded="false"
+          ><span aria-hidden="true"></span></button>
+          <input id="history-search" type="search" aria-label="Search playback history" />
+        </div>
+      </header>
+
+      <section class="history-table" aria-label="Playback history entries">
+        <div class="history-table-header" role="row">
+          <div role="columnheader">File</div>
+          <div role="columnheader">Progress</div>
+          <div role="columnheader">Played at</div>
+        </div>
+        <div id="history-groups" class="history-groups" role="treegrid" aria-multiselectable="true"></div>
+      </section>
+    </main>
+
+    <div id="history-context-menu" class="history-menu" role="menu" hidden>
+      <button type="button" data-action="play" role="menuitem">Play</button>
+      <button type="button" data-action="play-new" role="menuitem">Play in New Window</button>
+      <hr />
+      <button type="button" data-action="reveal" role="menuitem">Show in Finder</button>
+      <hr />
+      <button type="button" data-action="delete" role="menuitem">Delete…</button>
+    </div>
+
+    <div id="history-search-menu" class="history-menu history-search-menu" role="menu" hidden>
+      <div class="history-menu-label">Search in</div>
+      <button type="button" data-search-option="filename" role="menuitemradio" aria-checked="false">
+        <span class="history-menu-check" aria-hidden="true"></span>Filename
+      </button>
+      <button type="button" data-search-option="path" role="menuitemradio" aria-checked="true">
+        <span class="history-menu-check" aria-hidden="true">✓</span>Full path
+      </button>
+    </div>
+
+    <div id="history-confirm-layer" class="history-confirm-layer" hidden>
+      <section class="history-confirm-sheet" role="alertdialog" aria-modal="true" aria-labelledby="history-confirm-title">
+        <div class="history-confirm-copy">
+          <img src="./assets/iina/app-icon.png" alt="" />
+          <div>
+            <h1 id="history-confirm-title">Delete Playback History</h1>
+            <p>Are you sure to delete selected entries?</p>
+          </div>
+        </div>
+        <div class="history-confirm-actions">
+          <button id="history-confirm-cancel" type="button">Cancel</button>
+          <button id="history-confirm-ok" class="default" type="button">OK</button>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="./history.js"></script>
+  </body>
+</html>

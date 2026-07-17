@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>About</title>
+    <link rel="stylesheet" href="./about.css" />
+  </head>
+  <body>
+    <main class="about-window" aria-label="About IINA">
+      <aside class="about-sidebar">
+        <img class="about-icon" src="./assets/iina/app-icon.png" alt="" />
+        <div class="about-name">IINA</div>
+        <div id="about-version" class="about-version">0.9.0 Build 90</div>
+        <div class="about-runtime" aria-label="Runtime versions">
+          <span id="about-mpv">mpv</span>
+          <span id="about-ffmpeg">FFmpeg</span>
+        </div>
+        <nav class="about-tabs" role="tablist" aria-label="About sections">
+          <button
+            class="about-tab is-selected"
+            id="about-tab-license"
+            type="button"
+            role="tab"
+            aria-controls="about-pane-license"
+            aria-selected="true"
+            data-tab="license"
+            data-i18n-table="AboutWindowController"
+            data-i18n-key="jEf-xN-6xb.title"
+          >License</button>
+          <button
+            class="about-tab"
+            id="about-tab-contributors"
+            type="button"
+            role="tab"
+            aria-controls="about-pane-contributors"
+            aria-selected="false"
+            data-tab="contributors"
+            data-i18n-table="AboutWindowController"
+            data-i18n-key="XWg-VQ-fRV.title"
+          >Contributors</button>
+          <button
+            class="about-tab"
+            id="about-tab-credits"
+            type="button"
+            role="tab"
+            aria-controls="about-pane-credits"
+            aria-selected="false"
+            data-tab="credits"
+            data-i18n-table="AboutWindowController"
+            data-i18n-key="zCH-uO-acx.title"
+          >Credits</button>
+        </nav>
+      </aside>
+
+      <section class="about-detail">
+        <section
+          class="about-pane about-document"
+          id="about-pane-license"
+          role="tabpanel"
+          aria-labelledby="about-tab-license"
+          data-pane="license"
+        ><div id="about-license" class="about-rtf"></div></section>
+        <section
+          class="about-pane about-contributors"
+          id="about-pane-contributors"
+          role="tabpanel"
+          aria-labelledby="about-tab-contributors"
+          data-pane="contributors"
+          hidden
+        >
+          <div id="about-contributor-grid" class="about-contributor-grid" aria-live="polite"></div>
+          <div class="about-contributor-fade" aria-hidden="true"></div>
+          <button class="about-link about-contributors-link" type="button" data-link="contributors">iina/contributors</button>
+          <p class="about-crowdin-copy">IINA localization is powered by Crowdin.</p>
+          <button class="about-link about-translators-link" type="button" data-link="translators">crowdin/members</button>
+        </section>
+        <section
+          class="about-pane about-document"
+          id="about-pane-credits"
+          role="tabpanel"
+          aria-labelledby="about-tab-credits"
+          data-pane="credits"
+          hidden
+        ><div id="about-credits" class="about-rtf"></div></section>
+      </section>
+    </main>
+    <script type="module" src="./about.js"></script>
+  </body>
+</html>

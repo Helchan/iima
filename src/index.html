@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IINA</title>
+    <script>
+      (() => {
+        const role = new URLSearchParams(location.search).get("window-role");
+        if (["open-url", "video-filter", "audio-filter", "preferences"].includes(role)) {
+          document.documentElement.dataset.windowRole = role;
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main id="app" class="app-shell app-shell--initial">
+      <section id="initial-window" class="initial-window" aria-label="IINA initial window">
+        <div class="initial-left">
+          <img class="app-icon" src="./assets/iina/initial-window-icon.png" alt="" />
+          <div class="app-name">IINA</div>
+          <div class="app-version">0.9.0</div>
+        </div>
+        <div class="initial-main">
+          <button id="open-file-button" class="initial-action" type="button">
+            <span>Open...</span>
+            <kbd>&#8984;O</kbd>
+          </button>
+          <button id="open-url-button" class="initial-action" type="button">
+            <span>Open URL...</span>
+            <kbd>&#8679;&#8984;O</kbd>
+          </button>
+          <button id="resume-button" class="last-file" type="button">
+            <img class="last-file-icon" src="./assets/iina/icons/history.png" alt="" />
+            <span class="last-file-prefix" data-i18n-table="InitialWindowController" data-i18n-key="KWZ-BM-GBN.title">Resume</span>
+            <span class="last-file-title"></span>
+            <span class="last-file-position"></span>
+          </button>
+          <div class="recent-panel" aria-label="Recent Files">
+            <div id="recent-files" class="recent-files" role="listbox"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="player-window" class="player-window" aria-label="IINA player window" hidden>
+        <div class="video-stage">
+          <div class="video-placeholder">
+            <div id="surface-title" class="placeholder-title">libmpv render surface</div>
+            <div id="surface-subtitle" class="placeholder-subtitle"></div>
+            <div id="media-diagnostics" class="media-diagnostics" hidden>
+              <div id="media-format" class="media-diagnostic-row"></div>
+              <div id="media-video" class="media-diagnostic-row"></div>
+              <div id="media-audio" class="media-diagnostic-row"></div>
+            </div>
+          </div>
+          <div id="pip-overlay" class="pip-overlay" hidden>
+            <div class="pip-overlay-content">
+              <img class="pip-overlay-icon" src="assets/iina/icons/playing-in-pip.png" alt="" draggable="false" />
+              <div class="pip-overlay-label">This video is playing in picture in picture</div>
+            </div>
+          </div>
+          <div id="fullscreen-info" class="fullscreen-info" aria-live="off" hidden>
+            <span id="fullscreen-title" class="fullscreen-title"></span>
+            <span class="fullscreen-status-row">
+              <span id="fullscreen-clock"></span>
+              <span id="fullscreen-battery" class="fullscreen-battery" hidden></span>
+            </span>
+          </div>
+          <div id="osd" class="osd" hidden></div>
+          <div id="thumbnail-peek" class="thumbnail-peek" hidden>
+            <img id="thumbnail-image" class="thumbnail-image" alt="" />
+            <div id="thumbnail-time" class="thumbnail-time">00:00</div>
+          </div>
+          <aside id="sidebar" class="sidebar" hidden>
+            <div class="sidebar-tabs">
+              <button data-sidebar-tab="playlist" data-i18n-table="PlaylistViewController" data-i18n-key="rjs-Qf-mT6.label" class="sidebar-tab active" type="button">Playlist</button>
+              <button data-sidebar-tab="chapters" data-i18n-table="PlaylistViewController" data-i18n-key="aaR-kR-im0.label" class="sidebar-tab" type="button">Chapters</button>
+              <button data-sidebar-tab="video" data-i18n-table="QuickSettingViewController" data-i18n-key="CYP-el-A6A.label" class="sidebar-tab" type="button">Video</button>
+              <button data-sidebar-tab="audio" data-i18n-table="QuickSettingViewController" data-i18n-key="bzk-c2-LH5.label" class="sidebar-tab" type="button">Audio</button>
+              <button data-sidebar-tab="subtitles" class="sidebar-tab" type="button">Subtitles</button>
+            </div>
+            <div id="sidebar-content" class="sidebar-content"></div>
+          </aside>
+        </div>
+
+        <div class="top-bar">
+          <div id="media-title" class="media-title">IINA</div>
+          <button id="on-top-button" class="titlebar-on-top-button" type="button" title="Float on Top" aria-label="Float on Top" hidden>
+            <img src="assets/iina/icons/ontop.png" alt="" draggable="false" />
+          </button>
+        </div>
+
+        <div class="osc">
+          <div class="osc-top-row">
+            <div class="osc-volume-group">
+              <button id="mute-button" class="icon-button" type="button" title="Mute" aria-label="Mute">
+                <img class="button-icon" src="assets/iina/icons/volume.png" alt="" draggable="false" />
+              </button>
+              <input id="volume-slider" class="volume-slider" type="range" min="0" max="200" value="100" aria-label="Volume" />
+            </div>
+
+            <div id="left-arrow-label" class="osc-arrow-label osc-arrow-label--left" aria-hidden="true" hidden></div>
+
+            <div class="osc-transport-group">
+              <button id="backward-button" class="transport-button" type="button" title="Backward" aria-label="Backward">
+                <img class="button-icon" src="assets/iina/icons/speed-backward.png" alt="" draggable="false" />
+              </button>
+              <button id="play-button" class="play-button" type="button" title="Play" aria-label="Play">
+                <img class="button-icon" src="assets/iina/icons/play.png" alt="" draggable="false" />
+              </button>
+              <button id="forward-button" class="transport-button" type="button" title="Forward" aria-label="Forward">
+                <img class="button-icon" src="assets/iina/icons/speed-forward.png" alt="" draggable="false" />
+              </button>
+            </div>
+
+            <div id="right-arrow-label" class="osc-arrow-label osc-arrow-label--right" aria-hidden="true" hidden></div>
+
+            <div id="osc-toolbar-group" class="osc-toolbar-group">
+              <button id="pip-button" class="icon-button" type="button" title="Picture in Picture" aria-label="Picture in Picture">
+                <img class="button-icon" src="assets/iina/icons/pip.png" alt="" draggable="false" />
+              </button>
+              <button id="playlist-button" class="icon-button" type="button" title="Playlist" aria-label="Playlist">
+                <img class="button-icon" src="assets/iina/icons/playlist.png" alt="" draggable="false" />
+              </button>
+              <button id="settings-button" class="icon-button" type="button" title="Quick Settings" aria-label="Quick Settings">
+                <img class="button-icon" src="assets/iina/icons/settings.png" alt="" draggable="false" />
+              </button>
+              <button id="music-mode-button" class="icon-button optional-toolbar-button" type="button" title="Enter Music Mode" aria-label="Enter Music Mode" hidden>
+                <img class="button-icon" src="assets/iina/icons/music-mode.png" alt="" draggable="false" />
+              </button>
+              <button id="fullscreen-button" class="icon-button optional-toolbar-button" type="button" title="Full Screen" aria-label="Full Screen" hidden>
+                <img class="button-icon" src="assets/iina/icons/fullscreen.png" alt="" draggable="false" />
+              </button>
+              <button id="sub-track-button" class="icon-button optional-toolbar-button" type="button" title="Subtitles" aria-label="Subtitles" hidden>
+                <img class="button-icon" src="assets/iina/icons/sub-track.png" alt="" draggable="false" />
+              </button>
+              <button id="screenshot-button" class="icon-button optional-toolbar-button" type="button" title="Screenshot" aria-label="Screenshot" hidden>
+                <img class="button-icon" src="assets/iina/icons/screenshot.png" alt="" draggable="false" />
+              </button>
+            </div>
+          </div>
+
+          <div class="osc-slider-row">
+            <div class="time-label" id="left-time">00:00</div>
+            <div id="play-slider-track" class="play-slider-track">
+              <input id="play-slider" class="play-slider" type="range" min="0" max="1000" value="0" aria-label="Playback position" />
+              <span id="chapter-markers" class="chapter-markers" aria-hidden="true"></span>
+              <button id="ab-loop-a" class="ab-loop-knob ab-loop-knob--a" type="button" title="A-B loop A" aria-label="A-B loop A" hidden></button>
+              <button id="ab-loop-b" class="ab-loop-knob ab-loop-knob--b" type="button" title="A-B loop B" aria-label="A-B loop B" hidden></button>
+            </div>
+            <button class="time-label time-label--switchable" id="right-time" type="button" title="Show remaining time" aria-label="Total duration">--:--</button>
+          </div>
+        </div>
+
+        <section id="mini-player-ui" class="mini-player-ui" aria-label="IINA Mini Player" hidden>
+          <div id="mini-video-region" class="mini-video-region">
+            <img id="mini-default-album-art" class="mini-default-album-art" src="assets/iina/icons/default-album-art.png" alt="" draggable="false" />
+          </div>
+
+          <div class="mini-control-bar">
+            <div id="mini-media-info" class="mini-media-info">
+              <div id="mini-title" class="mini-title">IINA</div>
+              <div id="mini-artist-album" class="mini-artist-album"></div>
+            </div>
+
+            <div id="mini-controls" class="mini-controls" aria-label="Mini Player controls">
+              <button id="mini-volume-button" class="mini-small-button mini-volume-button" type="button" title="Volume" aria-label="Volume">
+                <img class="mini-small-icon" src="assets/iina/icons/volume.png" alt="" draggable="false" />
+              </button>
+              <button id="mini-previous-button" class="mini-transport-button mini-previous-button" type="button" title="Previous" aria-label="Previous">
+                <img src="assets/iina/icons/previous.png" alt="" draggable="false" />
+              </button>
+              <button id="mini-play-button" class="mini-transport-button mini-play-button" type="button" title="Play" aria-label="Play">
+                <img src="assets/iina/icons/play.png" alt="" draggable="false" />
+              </button>
+              <button id="mini-next-button" class="mini-transport-button mini-next-button" type="button" title="Next" aria-label="Next">
+                <img src="assets/iina/icons/next.png" alt="" draggable="false" />
+              </button>
+              <button id="mini-playlist-button" class="mini-small-button mini-playlist-button" type="button" title="Playlist" aria-label="Playlist">
+                <img class="mini-small-icon" src="assets/iina/icons/playlist.png" alt="" draggable="false" />
+              </button>
+              <button id="mini-album-art-button" class="mini-small-button mini-album-art-button" type="button" title="Album Art" aria-label="Album Art">
+                <img class="mini-small-icon" src="assets/iina/icons/toggle-album-art.png" alt="" draggable="false" />
+              </button>
+            </div>
+
+            <div class="mini-progress-row">
+              <div id="mini-left-time" class="mini-time mini-time--left">00:00</div>
+              <input id="mini-play-slider" class="mini-play-slider" type="range" min="0" max="1000" value="0" aria-label="Playback position" />
+              <button id="mini-right-time" class="mini-time mini-time--right" type="button" title="Show remaining time" aria-label="Total duration">--:--</button>
+            </div>
+
+            <div id="mini-volume-popover" class="mini-volume-popover" role="dialog" aria-label="Volume" hidden>
+              <button id="mini-mute-button" class="mini-popover-mute" type="button" title="Mute" aria-label="Mute">
+                <img src="assets/iina/icons/volume.png" alt="" draggable="false" />
+              </button>
+              <input id="mini-volume-slider" class="mini-volume-slider" type="range" min="0" max="200" value="100" aria-label="Volume" />
+              <output id="mini-volume-label" class="mini-volume-label">100</output>
+            </div>
+          </div>
+
+          <div id="mini-playlist" class="mini-playlist" aria-label="Playlist" hidden>
+            <div id="mini-playlist-list" class="mini-playlist-list" role="listbox"></div>
+          </div>
+
+          <div id="mini-window-actions" class="mini-window-actions">
+            <button id="mini-close-button" class="mini-window-button mini-close-button" type="button" title="Close Mini Player" aria-label="Close Mini Player"></button>
+            <button id="mini-back-button" class="mini-window-button" type="button" title="Back to video mode" aria-label="Back to video mode">
+              <img src="assets/iina/icons/back.png" alt="" draggable="false" />
+            </button>
+          </div>
+        </section>
+      </section>
+
+      <section id="open-url-modal" class="url-modal" role="dialog" aria-modal="true" aria-label="Open URL" hidden>
+        <div class="url-window">
+          <div class="url-line">
+            <span id="url-http-prefix" class="url-prefix" hidden>http://</span>
+            <input id="url-field" class="url-field" type="text" placeholder="Please enter the URL here……" data-i18n-table="OpenURLWindowController" data-i18n-placeholder-key="XV7-VP-Ua2.placeholderString" />
+          </div>
+          <div id="url-error" class="url-error" data-i18n-table="OpenURLWindowController" data-i18n-key="gaI-DT-l2c.title" hidden>URL is invalid.</div>
+          <div class="url-auth-title" data-i18n-table="OpenURLWindowController" data-i18n-key="wxH-ic-Uug.title">HTTP Authentication</div>
+          <div class="url-auth-box">
+            <label class="url-label" for="url-username" data-i18n-table="OpenURLWindowController" data-i18n-key="Q1z-9O-n4X.title">Username</label>
+            <label class="url-label" for="url-password" data-i18n-table="OpenURLWindowController" data-i18n-key="uM6-Bp-Wdk.title">Password</label>
+            <input id="url-username" class="url-auth-input" type="text" />
+            <input id="url-password" class="url-auth-input" type="password" />
+            <label class="url-remember">
+              <input id="url-remember" type="checkbox" />
+              <span data-i18n-table="OpenURLWindowController" data-i18n-key="m0D-hR-3pr.title">Remember username and password for this host in keychain</span>
+            </label>
+          </div>
+          <div class="url-actions">
+            <button id="url-cancel-button" class="dialog-button" type="button" data-i18n-table="OpenURLWindowController" data-i18n-key="iNG-ee-EW6.title">Cancel</button>
+            <button id="url-open-button" class="dialog-button dialog-button--primary" type="button" data-i18n-table="OpenURLWindowController" data-i18n-key="8sC-lH-DOd.title">Open</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="online-subtitles-accessory" class="online-subtitles-accessory" aria-label="Find Online Subtitles" hidden>
+        <div class="online-subtitles-instruction" data-i18n-table="SubChooseViewController" data-i18n-key="vAl-Km-bkf.title">Please click to select subtitles to download:</div>
+        <div id="online-subtitles-list" class="online-subtitles-list" role="listbox" aria-multiselectable="false"></div>
+        <footer class="online-subtitles-actions">
+          <button id="online-subtitles-cancel-button" class="online-subtitles-action" type="button" data-i18n-table="SubChooseViewController" data-i18n-key="pPz-om-Xit.title">CANCEL</button>
+          <button id="online-subtitles-download-button" class="online-subtitles-action" type="button" data-i18n-table="SubChooseViewController" data-i18n-key="y68-ot-NOl.title" disabled>DOWNLOAD</button>
+        </footer>
+      </section>
+
+      <section id="plugin-github-modal" class="plugin-github-modal" role="dialog" aria-modal="true" aria-label="Install Plugin from GitHub" hidden>
+        <div class="plugin-github-window">
+          <div class="plugin-github-title">Install a new plugin from GitHub</div>
+          <p class="plugin-github-instructions">Please enter the full URL of the GitHub repository or a string in the "user/repo" format. You can also choose one from the default plugins list.</p>
+          <div class="plugin-github-source-row">
+            <input id="plugin-github-source" class="plugin-github-source" type="text" autocomplete="off" placeholder="user/repo" />
+            <span id="plugin-github-spinner" class="plugin-github-spinner" role="status" aria-label="Installing plugin" hidden></span>
+          </div>
+          <div class="plugin-github-label">Default plugins:</div>
+          <div id="plugin-github-default-list" class="plugin-github-default-list" role="listbox" aria-label="Default plugins"></div>
+          <div id="plugin-github-error" class="plugin-github-error" hidden></div>
+          <div class="plugin-github-actions">
+            <button id="plugin-github-cancel-button" class="dialog-button" type="button">Cancel</button>
+            <button id="plugin-github-install-button" class="dialog-button dialog-button--primary" type="button" disabled>Install</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="filter-modal" class="filter-modal" role="dialog" aria-modal="true" aria-label="Filters" hidden>
+        <div class="filter-window">
+          <header class="filter-titlebar">
+            <div class="filter-traffic-lights">
+              <button id="filter-close-button" class="traffic-light traffic-light--close" type="button" title="Close"></button>
+              <span class="traffic-light traffic-light--minimize"></span>
+              <span class="traffic-light traffic-light--zoom"></span>
+            </div>
+            <div id="filter-window-title" class="filter-window-title">Filters</div>
+          </header>
+          <section class="filter-pane filter-pane--current" aria-label="Current Filters">
+            <div class="filter-table-header filter-current-grid">
+              <span>#</span>
+              <span>Filter String</span>
+              <span></span>
+            </div>
+            <div id="current-filter-list" class="filter-table-body" role="listbox"></div>
+            <div class="filter-toolbar">
+              <button id="filter-add-current-button" class="filter-toolbar-button" type="button" title="Add Filter" aria-label="Add Filter">+</button>
+              <button id="filter-remove-current-button" class="filter-toolbar-button" type="button" title="Remove Filter" aria-label="Remove Filter" disabled>-</button>
+            </div>
+          </section>
+          <div class="filter-divider"></div>
+          <section class="filter-pane filter-pane--saved" aria-label="Saved Filters">
+            <div class="filter-saved-label" data-i18n-table="FilterWindowController" data-i18n-key="m5X-Zl-aOj.title">Saved filters</div>
+            <div id="saved-filter-list" class="saved-filter-list" role="listbox"></div>
+          </section>
+
+          <form id="filter-preset-sheet" class="filter-preset-sheet" aria-label="Add Filter" hidden>
+            <div class="filter-preset-browser">
+              <div id="filter-preset-list" class="filter-preset-list" role="listbox" aria-label="Filter Presets"></div>
+              <div id="filter-preset-settings" class="filter-preset-settings"></div>
+            </div>
+            <div class="filter-preset-actions">
+              <button id="filter-preset-cancel-button" class="dialog-button" type="button">Cancel</button>
+              <button id="filter-preset-add-button" class="dialog-button dialog-button--primary" type="submit">Add</button>
+            </div>
+          </form>
+
+          <form id="filter-editor-sheet" class="filter-editor-sheet" hidden>
+            <div id="filter-editor-title" class="filter-editor-title">Save Filter</div>
+            <p id="filter-editor-description" class="filter-editor-description">By saving a filter, you can enable or disable it conveniently and even assign a shortcut key to it.</p>
+            <label class="filter-editor-field">
+              <span>Name:</span>
+              <input id="filter-editor-name" type="text" maxlength="120" autocomplete="off" />
+            </label>
+            <label id="filter-editor-string-row" class="filter-editor-field">
+              <span>Filter String:</span>
+              <input id="filter-editor-string" type="text" maxlength="8192" autocomplete="off" />
+            </label>
+            <label class="filter-editor-field">
+              <span>Shortcut key:</span>
+              <input id="filter-editor-shortcut" type="text" readonly placeholder="Press any key to record" />
+            </label>
+            <div id="filter-editor-error" class="filter-editor-error" hidden></div>
+            <div class="filter-editor-actions">
+              <button id="filter-editor-cancel-button" class="dialog-button" type="button">Cancel</button>
+              <button id="filter-editor-submit-button" class="dialog-button dialog-button--primary" type="submit">Add</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section id="preferences-modal" class="preferences-modal" role="dialog" aria-modal="true" aria-label="Preferences" hidden>
+        <div class="preferences-window">
+          <div class="preferences-sidebar">
+            <div class="preferences-titlebar">
+              <button id="preferences-close-button" class="traffic-light traffic-light--close" type="button" title="Close"></button>
+              <span class="traffic-light traffic-light--minimize"></span>
+              <span class="traffic-light traffic-light--zoom"></span>
+            </div>
+            <input
+              id="preferences-search"
+              class="preferences-search"
+              type="search"
+              placeholder="Search"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls="preferences-search-completions"
+              aria-expanded="false"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <div id="preferences-search-completions" class="preferences-search-completions" role="listbox" hidden></div>
+            <div id="preferences-tabs" class="preferences-tabs" role="tablist"></div>
+          </div>
+          <div class="preferences-detail">
+            <div id="preferences-content" class="preferences-content"></div>
+          </div>
+          <div id="preference-sheet-layer" class="preference-sheet-layer" hidden></div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

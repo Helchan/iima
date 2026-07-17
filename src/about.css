@@ -1,0 +1,221 @@
+:root {
+  color-scheme: light dark;
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  font-size: 13px;
+  background: transparent;
+  color: CanvasText;
+}
+
+* { box-sizing: border-box; }
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+button { font: inherit; }
+
+.about-window {
+  display: grid;
+  grid-template-columns: 220px 420px;
+  width: 640px;
+  height: 400px;
+  background: Canvas;
+}
+
+.about-sidebar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 400px;
+  padding-top: 40px;
+}
+
+.about-icon {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.about-name {
+  margin-top: 8px;
+  font-size: 24px;
+  font-weight: 300;
+  line-height: 35px;
+}
+
+.about-version {
+  min-height: 16px;
+  margin-top: 8px;
+  color: color-mix(in srgb, CanvasText 62%, transparent);
+  font-size: 13px;
+  line-height: 16px;
+  white-space: nowrap;
+  user-select: text;
+}
+
+.about-runtime {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  min-width: 180px;
+  height: 11px;
+  margin-top: 4px;
+  color: color-mix(in srgb, CanvasText 58%, transparent);
+  font-size: 9px;
+  line-height: 11px;
+  white-space: nowrap;
+  user-select: text;
+}
+
+.about-tabs {
+  display: grid;
+  grid-template-rows: repeat(3, 24px);
+  gap: 10px;
+  width: 140px;
+  margin-top: 56px;
+}
+
+.about-tab {
+  height: 24px;
+  margin: 0;
+  padding: 0 8px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: CanvasText;
+  line-height: 24px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.about-tab:hover { background: color-mix(in srgb, CanvasText 8%, transparent); }
+
+.about-tab.is-selected {
+  background: AccentColor;
+  color: AccentColorText;
+}
+
+.about-tab:focus-visible {
+  outline: 3px solid color-mix(in srgb, AccentColor 46%, transparent);
+  outline-offset: 1px;
+}
+
+.about-detail {
+  position: relative;
+  width: 420px;
+  height: 400px;
+  padding-block: 36px 20px;
+  padding-inline: 0 20px;
+}
+
+.about-pane {
+  position: relative;
+  width: 400px;
+  height: 344px;
+}
+
+.about-pane[hidden] { display: none; }
+
+.about-document {
+  overflow: auto;
+  user-select: text;
+}
+
+.about-document .about-rtf {
+  display: block;
+  margin: 0;
+  padding-block: 0;
+  padding-inline: 0 16px;
+  color: color-mix(in srgb, CanvasText 68%, transparent);
+  font: 12px/1.42 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  text-align: start;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.about-document .about-rtf.is-plain { white-space: pre-wrap; }
+
+.about-contributors { overflow: hidden; }
+
+.about-contributor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 32px);
+  grid-auto-rows: 32px;
+  align-content: start;
+  justify-content: space-between;
+  gap: 4px;
+  width: 392px;
+  height: 282px;
+  margin: 0 4px;
+  padding: 0 0 52px;
+  overflow: auto;
+}
+
+.about-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: color-mix(in srgb, CanvasText 8%, transparent);
+  box-shadow: 0 1px 2px color-mix(in srgb, CanvasText 18%, transparent);
+  object-fit: cover;
+}
+
+.about-contributor-fade {
+  position: absolute;
+  top: 222px;
+  left: 0;
+  z-index: 1;
+  width: 400px;
+  height: 60px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent 0%, color-mix(in srgb, Canvas 95%, transparent) 70%, Canvas 100%);
+}
+
+.about-link {
+  position: absolute;
+  z-index: 2;
+  height: 18px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, CanvasText 72%, AccentColor 28%);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
+.about-link:hover { color: AccentColor; }
+.about-link::before { content: "↗ "; }
+.about-contributors-link { top: 256px; left: 139px; }
+
+.about-crowdin-copy {
+  position: absolute;
+  top: 290px;
+  inset-inline-start: 0;
+  margin: 0;
+  font-size: 13px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.about-translators-link { top: 326px; left: 135px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .about-pane { animation: about-pane-in 100ms ease-out; }
+}
+
+@keyframes about-pane-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

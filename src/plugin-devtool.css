@@ -1,0 +1,123 @@
+:root {
+  color-scheme: light dark;
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  background: transparent;
+}
+
+* { box-sizing: border-box; }
+
+html,
+body,
+.developer-tool {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+.developer-tool {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 5px var(--developer-console-height, 124px);
+  color: CanvasText;
+  background: Canvas;
+}
+
+.developer-splitter {
+  position: relative;
+  cursor: ns-resize;
+  background: color-mix(in srgb, CanvasText 9%, Canvas);
+  border-top: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+}
+
+.developer-splitter::after {
+  content: "";
+  position: absolute;
+  inset: -3px 0;
+}
+
+.developer-history {
+  min-height: 0;
+  margin: 0;
+  padding: 4px 0;
+  overflow: auto;
+  list-style: none;
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.developer-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 8px;
+  padding: 5px 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.developer-row-label { color: color-mix(in srgb, CanvasText 48%, transparent); text-align: right; }
+.developer-prompt .developer-row-label { color: #20a34a; }
+.developer-value--number { color: #1670d2; }
+.developer-value--string { color: #9b552f; }
+.developer-value--boolean { color: #8c45b5; }
+.developer-value--null,
+.developer-value--undefined { color: color-mix(in srgb, CanvasText 48%, transparent); }
+
+.developer-message {
+  display: block;
+  margin: 2px 0;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.developer-message--debug { background: color-mix(in srgb, gray 12%, transparent); }
+.developer-message--warning { background: color-mix(in srgb, orange 14%, transparent); }
+.developer-message--error { color: #d52b2b; background: color-mix(in srgb, red 11%, transparent); }
+.developer-stack { margin-top: 5px; color: color-mix(in srgb, CanvasText 55%, transparent); }
+
+.developer-object summary { cursor: default; }
+.developer-object-row { display: flex; gap: 6px; padding-left: 16px; }
+.developer-object-key { color: color-mix(in srgb, CanvasText 55%, transparent); }
+
+.developer-console {
+  min-height: 108px;
+  background: color-mix(in srgb, Canvas 92%, CanvasText 8%);
+}
+
+.developer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 6px 8px 2px;
+}
+
+.developer-toolbar-button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  color: color-mix(in srgb, CanvasText 55%, transparent);
+  background: transparent;
+  font-size: 16px;
+}
+
+.developer-toolbar-button svg { display: block; width: 19px; height: 19px; }
+
+.developer-toolbar-button:hover { color: CanvasText; }
+.developer-run { color: AccentColor; }
+.developer-shortcut { margin-left: auto; color: color-mix(in srgb, CanvasText 48%, transparent); font-size: 11px; }
+
+.developer-input {
+  display: block;
+  width: 100%;
+  height: 74px;
+  max-height: 100px;
+  padding: 7px 9px;
+  resize: none;
+  border: 0;
+  outline: 0;
+  color: CanvasText;
+  background: transparent;
+  font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}

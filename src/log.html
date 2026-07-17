@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Log Viewer</title>
+    <link rel="stylesheet" href="./log.css" />
+  </head>
+  <body>
+    <main class="log-window" aria-label="Log Viewer">
+      <header class="log-toolbar">
+        <label for="log-level">Level:</label>
+        <select id="log-level">
+          <option value="0">Verbose</option>
+          <option value="1" selected>Debug</option>
+          <option value="2">Warning</option>
+          <option value="3">Error</option>
+        </select>
+        <label for="log-subsystem">Subsystem:</label>
+        <select id="log-subsystem">
+          <option value="">All</option>
+        </select>
+        <button id="log-save" type="button">Save as…</button>
+      </header>
+
+      <section id="log-table" class="log-table" role="grid" aria-label="Logs" aria-multiselectable="true" tabindex="0">
+        <div class="log-table-header" role="row">
+          <div role="columnheader" aria-label="Level"></div>
+          <div role="columnheader">Time</div>
+          <div role="columnheader">Subsystem</div>
+          <div role="columnheader">Message</div>
+        </div>
+        <div id="log-rows" class="log-rows" role="rowgroup"></div>
+      </section>
+    </main>
+    <script type="module" src="./log.js"></script>
+  </body>
+</html>
