@@ -90,7 +90,7 @@ npm run gui:stdin-playback
 npm run package:mac
 ```
 
-The current environment does not have a local or global Tauri CLI. `npm run package:mac` therefore uses `scripts/package-macos.mjs` to rebuild the frontend and release binaries with Tauri's `custom-protocol` feature, refresh the Tauri `.app`, copy IINA's 71 dylibs and universal Sparkle 2.9.4, enforce the updater plist contract, patch the checked dependency's libplacebo ABI suffix, add the required rpaths, ad-hoc sign and deep-verify the bundle, smoke-load libmpv/Sparkle, and generate a UDZO DMG. The script follows Finder's actual custom volume name, applies the `500x350` icon layout, and passes all final package gates.
+The current environment does not have a local or global Tauri CLI. `npm run package:mac` therefore uses `scripts/package-macos.mjs` to rebuild the frontend and release binaries with Tauri's `custom-protocol` and macOS-only `macos-cli` features, refresh the Tauri `.app`, copy IINA's 71 dylibs and universal Sparkle 2.9.4, enforce the updater plist contract, patch the checked dependency's libplacebo ABI suffix, add the required rpaths, ad-hoc sign and deep-verify the bundle, smoke-load libmpv/Sparkle, and generate a UDZO DMG. The script follows Finder's actual custom volume name, applies the `500x350` icon layout, and passes all final package gates.
 
 Final artifact paths:
 
@@ -111,7 +111,7 @@ Current local `0.9.0` package evidence:
 
 - `IINA-windows-x64`: an unsigned NSIS x64 installer built on `windows-latest`;
 - `IINA-macos-arm64`: an ad-hoc-signed arm64 `.app` archive and verified DMG built on the Apple
-  Silicon `macos-14` runner.
+  Silicon `macos-15` runner.
 
 The 2.6 GiB local `参考/` workspace is intentionally ignored. The macOS job recreates only its
 required inputs from the pinned IINA commit and Sparkle release by running

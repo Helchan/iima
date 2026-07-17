@@ -1205,6 +1205,7 @@ mod tests {
             "release WebViews must not fall back to the browser mock backend"
         );
         assert!(manifest.contains("custom-protocol = [\"tauri/custom-protocol\"]"));
+        assert!(manifest.contains("required-features = [\"macos-cli\"]"));
         assert!(manifest.contains("\"macos-private-api\", \"protocol-asset\""));
         assert_eq!(
             config
@@ -1214,8 +1215,11 @@ mod tests {
             "local screenshot and thumbnail previews require Tauri's asset protocol"
         );
         assert!(
-            package_script.matches("\"custom-protocol\"").count() >= 2,
-            "every packaged Rust binary build must enable the production asset protocol"
+            package_script
+                .matches("\"custom-protocol,macos-cli\"")
+                .count()
+                >= 2,
+            "macOS packaged Rust builds must enable the production protocol and Unix-only CLI"
         );
     }
 

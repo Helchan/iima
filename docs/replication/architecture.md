@@ -130,7 +130,7 @@ The Tauri port keeps the same conceptual ownership with different implementation
   - ad-hoc signs the app, verifies the full nested signature, validates Sparkle's Updater/Autoupdate/XPC components and both architectures, smoke-loads bundled `libmpv` and Sparkle, then creates a UDZO `IINA_1.3.5_aarch64_bundled_libmpv.dmg`, follows Finder's actual custom-volume name, applies the `500x350` layout, and verifies the image with `hdiutil verify` and `hdiutil imageinfo`. A pre-helper package completed these established gates; the media-helper change requires one final post-helper app/CLI/DMG run and refreshed hashes.
 - macOS bundle metadata (`src-tauri/IINA-Info.plist`, `src-tauri/icons/doc/`):
   - mirrors IINA's media document declarations, plugin UTIs, `iina://` scheme, Service entry, ATS exceptions, and document icons;
-  - keeps the generated executable, isolated `io.iima.player` identifier, signing, and update channel under Tauri ownership while matching IINA's observable `1.3.5` marketing version and build `141` in the host and Safari extension bundles.
+  - keeps the generated executable, isolated `io.iima.player` identifier, signing, update channel, and `0.9.0` build `90` host/Safari-extension identity under Tauri ownership while retaining IINA `1.3.5` build `141` as the observable behavior reference.
 - Launch Services runtime bridge (`src-tauri/src/launch.rs`):
   - handles Tauri `RunEvent::Opened` for file-open and deep-link events;
   - parses IINA-compatible `iina://open` and `iina://weblink` URL targets;

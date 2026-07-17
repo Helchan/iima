@@ -102,9 +102,9 @@ The repository-owned and locally reproducible scope is 100% closed. No known loc
 - Final main executable: `src-tauri/target/release/bundle/macos/IINA.app/Contents/MacOS/iima` — arm64, `18,510,832` bytes, SHA-256 `0d6a4dd8176fc2d69c01525481a955f0f172a2a8ca712ba867bf0a034cbfc322`
 - Final CLI executable: `src-tauri/target/release/bundle/macos/IINA.app/Contents/MacOS/iina-cli` — arm64, `516,976` bytes, SHA-256 `3ecd91586acc25a6282de3ed6580ef07e34140854a3e1aaee81c7c23028c8a84`
 - Final app size: `141152 KiB` by `du`
-- Final DMG path: `src-tauri/target/release/bundle/dmg/IINA_1.3.5_aarch64_bundled_libmpv.dmg` — `57,710,770` bytes, SHA-256 `a456f8bb561e2ab39d6f8f3c1cc83f9ae39415897b72fedff9c8ac35f189e627`
+- Historical reference-identity DMG path: `src-tauri/target/release/bundle/dmg/IINA_1.3.5_aarch64_bundled_libmpv.dmg` — `57,710,770` bytes, SHA-256 `a456f8bb561e2ab39d6f8f3c1cc83f9ae39415897b72fedff9c8ac35f189e627`
 - Final DMG image: UDZO GUID/HFS+, compressed bytes `57,693,499`, CRC32 `C017ED72`; `hdiutil verify` reports `VALID`
-- The host and Safari extension package identity is reference-driven: marketing version `1.3.5`, build `141`; the isolated Tauri bundle identifier remains `io.iima.player`.
+- The host and Safari extension package identity is project version `0.9.0`, build `90`; IINA `1.3.5` build `141` remains the pinned reference identity, and the isolated Tauri bundle identifier remains `io.iima.player`.
 - The final package contains 71 dylibs and 57 localization directories; libmpv, the Safari app extension, and Sparkle 2.9.4 are universal, while the app and CLI are arm64. `codesign --verify --deep --strict` passes.
 - Expected reference Sparkle 2.9.4 binary SHA-256 for the package gate: `923646d11e245d9ccd6f94fa3b74524459cacd11d34ab9ac109090a73c2f0429`
 

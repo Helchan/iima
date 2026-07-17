@@ -9,6 +9,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+macos-cli = []
+
+[[bin]]
+name = "iina-cli"
+path = "src/bin/iina-cli.rs"
+required-features = ["macos-cli"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
