@@ -15,19 +15,19 @@ const MATERIALIZED_BUILTIN_DIRECTORY: &str = ".builtins";
 const MAX_PROFILE_NAME_BYTES: usize = 250;
 const IINA_DEFAULT_CONTENTS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../参考/iina/iina/config/iina-default-input.conf"
+    "/resources/input_conf/iina-default-input.conf"
 ));
 const MPV_DEFAULT_CONTENTS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../参考/iina/iina/config/input.conf"
+    "/resources/input_conf/input.conf"
 ));
 const VLC_DEFAULT_CONTENTS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../参考/iina/iina/config/vlc-default-input.conf"
+    "/resources/input_conf/vlc-default-input.conf"
 ));
 const MOVIST_DEFAULT_CONTENTS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../参考/iina/iina/config/movist-default-input.conf"
+    "/resources/input_conf/movist-default-input.conf"
 ));
 
 static TEMPORARY_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);

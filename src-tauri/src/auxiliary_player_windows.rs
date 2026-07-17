@@ -173,6 +173,7 @@ fn show_window<R: Runtime>(
     if let (Some(width), Some(height)) = (spec.min_width, spec.min_height) {
         builder = builder.min_inner_size(width, height);
     }
+    #[cfg(target_os = "macos")]
     if spec.full_size_content {
         builder = builder
             .title_bar_style(tauri::TitleBarStyle::Overlay)

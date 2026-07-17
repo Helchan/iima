@@ -92,7 +92,7 @@ pub fn show_about_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         window.set_focus().map_err(|error| error.to_string())?;
         return Ok(());
     }
-    WebviewWindowBuilder::new(
+    let builder = WebviewWindowBuilder::new(
         app,
         ABOUT_WINDOW_LABEL,
         WebviewUrl::App("about.html".into()),
@@ -108,13 +108,16 @@ pub fn show_about_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     .resizable(false)
     .maximizable(false)
     .minimizable(true)
-    .decorations(true)
-    .title_bar_style(tauri::TitleBarStyle::Overlay)
-    .hidden_title(true)
-    .center()
-    .build()
-    .map(|_| ())
-    .map_err(|error| error.to_string())
+    .decorations(true);
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true);
+    builder
+        .center()
+        .build()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

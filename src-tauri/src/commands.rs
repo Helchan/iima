@@ -1471,16 +1471,20 @@ fn open_player_window_for_session<R: Runtime>(
     };
     let presentation = window_presentation(presentation_mode)?;
     let show_after_setup = !plugin_managed || has_media;
-    let mut builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
+    let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
         .title("IINA")
         .inner_size(presentation.width, presentation.height)
         .min_inner_size(presentation.min_width, presentation.min_height)
         .resizable(presentation.resizable)
         .visible(false)
         .transparent(true)
-        .decorations(decorations)
+        .decorations(decorations);
+    #[cfg(target_os = "macos")]
+    let mut builder = builder
         .title_bar_style(tauri::TitleBarStyle::Overlay)
         .hidden_title(true);
+    #[cfg(not(target_os = "macos"))]
+    let mut builder = builder;
     if !presentation.resizable {
         builder = builder.max_inner_size(presentation.width, presentation.height);
     }
@@ -2212,7 +2216,7 @@ pub(crate) fn open_service_url_in_active_player<R: Runtime>(
     let active_player_session_label =
         service_active_player_session_label(app, state, native_main_window)?;
     #[cfg(not(target_os = "macos"))]
-    let active_player_session_label = {
+    let active_player_session_label: Option<String> = {
         let _ = native_main_window;
         None
     };
@@ -5404,22 +5408,27 @@ fn enter_music_mode_window_for_session<R: Runtime>(
     );
     let mini_window = match app.get_webview_window(&mini_label) {
         Some(window) => window,
-        None => WebviewWindowBuilder::new(
-            app,
-            &mini_label,
-            WebviewUrl::App(format!("index.html?mini-player={session_label}").into()),
-        )
-        .title("IINA")
-        .inner_size(initial_layout.width, initial_layout.height)
-        .min_inner_size(MINI_PLAYER_INITIAL_WIDTH, MINI_PLAYER_CONTROL_HEIGHT)
-        .resizable(true)
-        .transparent(true)
-        .decorations(true)
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true)
-        .always_on_top(always_on_top)
-        .build()
-        .map_err(|error| error.to_string())?,
+        None => {
+            let builder = WebviewWindowBuilder::new(
+                app,
+                &mini_label,
+                WebviewUrl::App(format!("index.html?mini-player={session_label}").into()),
+            )
+            .title("IINA")
+            .inner_size(initial_layout.width, initial_layout.height)
+            .min_inner_size(MINI_PLAYER_INITIAL_WIDTH, MINI_PLAYER_CONTROL_HEIGHT)
+            .resizable(true)
+            .transparent(true)
+            .decorations(true);
+            #[cfg(target_os = "macos")]
+            let builder = builder
+                .title_bar_style(tauri::TitleBarStyle::Overlay)
+                .hidden_title(true);
+            builder
+                .always_on_top(always_on_top)
+                .build()
+                .map_err(|error| error.to_string())?
+        }
     };
     mini_window
         .set_always_on_top(always_on_top)

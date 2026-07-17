@@ -1862,7 +1862,7 @@ mod tests {
             fs::read_to_string(input_config_path).unwrap(),
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../参考/iina/iina/config/iina-default-input.conf"
+                "/resources/input_conf/iina-default-input.conf"
             ))
         );
         fs::remove_dir_all(root).unwrap();
