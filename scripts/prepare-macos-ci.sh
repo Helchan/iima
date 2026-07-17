@@ -17,7 +17,10 @@ git -C "$reference_root" fetch --depth 1 origin "$reference_commit"
 git -C "$reference_root" checkout --detach --force "$reference_commit"
 
 if [[ ! -f "$reference_root/deps/lib/libmpv.2.dylib" ]]; then
-  bash "$reference_root/other/download_libs.sh"
+  (
+    cd "$reference_root"
+    bash other/download_libs.sh
+  )
 fi
 
 if [[ ! -d "$sparkle_target" ]]; then
