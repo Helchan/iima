@@ -1,8 +1,9 @@
 import { createServer } from "node:http";
-import { createReadStream, statSync } from "node:fs";
+import { createReadStream, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
+import { htmlForBuildPlatform } from "./platform-html.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const base = join(root, "src");
@@ -29,8 +30,13 @@ createServer((req, res) => {
   try {
     const stat = statSync(requested);
     if (!stat.isFile()) throw new Error("not a file");
-    res.writeHead(200, { "Content-Type": contentTypes[extname(requested)] ?? "application/octet-stream" });
-    createReadStream(requested).pipe(res);
+    const extension = extname(requested);
+    res.writeHead(200, { "Content-Type": contentTypes[extension] ?? "application/octet-stream" });
+    if (extension === ".html") {
+      res.end(htmlForBuildPlatform(readFileSync(requested, "utf8")));
+    } else {
+      createReadStream(requested).pipe(res);
+    }
   } catch {
     res.writeHead(404);
     res.end("Not found");

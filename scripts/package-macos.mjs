@@ -45,7 +45,7 @@ const tauriConfig = JSON.parse(readFileSync(tauriConfigPath, "utf8"));
 const referencePackageIdentity = readReferencePackageIdentity(root);
 const appName = tauriConfig.productName || "IINA";
 const appVersion = tauriConfig.version || referencePackageIdentity.marketingVersion;
-const appBuildVersion = "90";
+const appBuildVersion = "92";
 const appIdentifier = tauriConfig.identifier || "io.iima.player";
 if (
   referencePackageIdentity.marketingVersion !== "1.3.5" ||

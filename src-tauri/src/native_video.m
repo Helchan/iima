@@ -430,6 +430,40 @@ static NSTimeInterval iima_native_video_frame_update_quiet_period(void) {
   return quietPeriod;
 }
 
+static CGFloat iima_native_video_corner_radius_for_style_mask(NSWindowStyleMask styleMask) {
+  BOOL fullscreen = (styleMask & NSWindowStyleMaskFullScreen) != 0;
+  BOOL titled = (styleMask & NSWindowStyleMaskTitled) != 0;
+  return fullscreen || !titled ? 0.0 : 10.0;
+}
+
+static void iima_native_video_sync_window_shape(NSWindow *videoWindow, NSWindow *parent) {
+  if (videoWindow == nil || parent == nil) {
+    return;
+  }
+  NSView *contentView = videoWindow.contentView;
+  NSView *frameView = contentView.superview ?: contentView;
+  if (frameView == nil) {
+    return;
+  }
+
+  // The video surface lives in a separate borderless NSWindow so WKWebView chrome can composite
+  // above it. That child does not inherit the titled parent's WindowServer corner mask. Keep the
+  // mask on the outer AppKit frame layer instead of IIMANativeVideoView's CAOpenGLLayer: the latter
+  // remains the sole owner of ICC/HDR/EDR output state.
+  frameView.wantsLayer = YES;
+  CALayer *frameLayer = frameView.layer;
+  if (frameLayer == nil) {
+    return;
+  }
+  frameLayer.backgroundColor = NSColor.blackColor.CGColor;
+  frameLayer.cornerRadius = iima_native_video_corner_radius_for_style_mask(parent.styleMask);
+  frameLayer.masksToBounds = YES;
+  if (@available(macOS 10.15, *)) {
+    frameLayer.cornerCurve = kCACornerCurveContinuous;
+  }
+  [videoWindow invalidateShadow];
+}
+
 static uint64_t iima_native_video_next_frame_update_generation(void) {
   // Use a process-wide monotonic token so a delayed block from a removed session can never match
   // a newly created session that happens to reuse the same label.
@@ -450,6 +484,7 @@ static BOOL iima_native_video_apply_window_frame(NSString *session, BOOL forceSu
   }
 
   @try {
+    iima_native_video_sync_window_shape(videoWindow, parent);
     NSRect targetFrame = parent.frame;
     IIMANativeVideoView *view = iima_native_video_views[session];
     if (!NSEqualRects(videoWindow.frame, targetFrame)) {
@@ -1360,6 +1395,8 @@ static void iima_native_video_restore_from_pip(void) {
   if (view != nil && videoWindow != nil) {
     [view removeFromSuperview];
     [videoWindow setContentView:view];
+    iima_native_video_sync_window_shape(
+      videoWindow, iima_native_video_hosts[iima_native_video_pip_session].window);
     iima_native_video_update_window_frame(iima_native_video_pip_session);
     [view updateDisplayLink];
     [view requestColorRefresh];
@@ -1395,8 +1432,8 @@ int iima_native_video_install(void *hostView, const char *sessionLabel, int forc
       result = parentResult;
       return;
     }
-    // A transparent parent casts a separate shadow for every opaque WebView
-    // control. Let the full-size opaque video window own the window shadow.
+    // A transparent parent casts a separate shadow for every opaque WebView control. Let the
+    // rounded, nonopaque video child own one shadow for the combined player surface.
     parent.hasShadow = NO;
     IIMANativeVideoView *view = iima_native_video_view_for_session(session);
     if (view == nil) {
@@ -1416,8 +1453,8 @@ int iima_native_video_install(void *hostView, const char *sessionLabel, int forc
                   styleMask:NSWindowStyleMaskBorderless
                     backing:NSBackingStoreBuffered
                       defer:NO];
-      videoWindow.backgroundColor = NSColor.blackColor;
-      videoWindow.opaque = YES;
+      videoWindow.backgroundColor = NSColor.clearColor;
+      videoWindow.opaque = NO;
       videoWindow.hasShadow = YES;
       videoWindow.ignoresMouseEvents = YES;
       videoWindow.releasedWhenClosed = NO;
@@ -1429,6 +1466,7 @@ int iima_native_video_install(void *hostView, const char *sessionLabel, int forc
         [view removeFromSuperview];
         [videoWindow setContentView:view];
       }
+      iima_native_video_sync_window_shape(videoWindow, parent);
       [view updateDisplayLink];
       [view requestColorRefresh];
     }
@@ -1606,6 +1644,8 @@ int iima_native_video_toggle_pip(const char *sessionLabel,
     placeholder.wantsLayer = YES;
     placeholder.layer.backgroundColor = NSColor.blackColor.CGColor;
     [videoWindow setContentView:placeholder];
+    iima_native_video_sync_window_shape(
+      videoWindow, iima_native_video_hosts[session].window);
     contentController.view = view;
     [pip setValue:delegate forKey:@"delegate"];
     [pip setValue:@(playing != 0) forKey:@"playing"];

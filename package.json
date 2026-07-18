@@ -1,7 +1,7 @@
 {
   "name": "iima",
   "private": true,
-  "version": "0.9.0",
+  "version": "0.9.2",
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -13,7 +13,8 @@
     "iso639:generate": "node scripts/generate-iso639-catalog.mjs",
     "iso639:check": "node scripts/generate-iso639-catalog.mjs --check",
     "keybindings:test": "node scripts/test-key-mapping.mjs",
-    "mouse:test": "node scripts/test-mouse-actions.mjs && node scripts/test-input-gestures.mjs && node scripts/test-first-mouse.mjs",
+    "mouse:test": "node scripts/test-mouse-actions.mjs && node scripts/test-input-gestures.mjs && node scripts/test-first-mouse.mjs && node scripts/test-osc-toolbar-layout.mjs",
+    "titlebar:test": "node scripts/test-player-titlebar.mjs",
     "pip:test": "node scripts/test-pip-overlay.mjs",
     "preferences:test": "npm run iso639:check && node scripts/test-preferences.mjs && node scripts/test-preference-search.mjs && node scripts/test-preference-collapse.mjs && node scripts/test-timeline-seek.mjs",
     "playlist:test": "node scripts/test-playlist-actions.mjs",
@@ -32,7 +33,7 @@
     "plugins:webkit-probe": "node scripts/test-plugin-sync-webkit.mjs",
     "gui:cold-launch": "node scripts/test-packaged-gui-cold-launch.mjs",
     "gui:stdin-playback": "node scripts/test-packaged-stdin-playback.mjs",
-    "verify:offline": "npm run package-identity:test && npm run locales:check && npm run locales:test && npm run keybindings:test && npm run mouse:test && npm run pip:test && npm run preferences:test && npm run playlist:test && npm run quicksettings:test && npm run online-subtitles:test && npm run extensions:test && npm run appcast:test && npm run inspector:test && npm run about:test && npm run media:test && npm run auxiliary-windows:test && npm run native-application:test && npm run plugins:test && npm run build && cargo test --manifest-path src-tauri/Cargo.toml --offline --features macos-cli && cargo check --manifest-path src-tauri/Cargo.toml --offline --all-targets --features macos-cli",
+    "verify:offline": "npm run package-identity:test && npm run locales:check && npm run locales:test && npm run keybindings:test && npm run mouse:test && npm run titlebar:test && npm run pip:test && npm run preferences:test && npm run playlist:test && npm run quicksettings:test && npm run online-subtitles:test && npm run extensions:test && npm run appcast:test && npm run inspector:test && npm run about:test && npm run media:test && npm run auxiliary-windows:test && npm run native-application:test && npm run plugins:test && npm run build && cargo test --manifest-path src-tauri/Cargo.toml --offline --features macos-cli && cargo check --manifest-path src-tauri/Cargo.toml --offline --all-targets --features macos-cli",
     "package:mac": "npm run package-identity:test && node scripts/package-macos.mjs",
     "tauri:build": "cargo build --manifest-path src-tauri/Cargo.toml",
     "tauri:check": "cargo check --manifest-path src-tauri/Cargo.toml"

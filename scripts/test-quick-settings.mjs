@@ -55,6 +55,7 @@ assert.equal(subtitleTextStyleAvailable({ id: 14, metadata: { codec: "subrip", i
 assert.equal(subtitleTextStyleAvailable({ id: 0, metadata: {} }), false);
 
 const frontend = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
+const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const player = readFileSync(new URL("../src-tauri/src/player.rs", import.meta.url), "utf8");
 for (const contract of [
   'heading: "Subtitle:"',
@@ -75,6 +76,31 @@ for (const contract of [
   'trKey("FreeSelectingViewController", "mCM-Di-cvS.title", "Select Region")',
 ]) {
   assert.ok(frontend.includes(contract), `Missing Quick Settings frontend contract: ${contract}`);
+}
+
+assert.match(
+  css,
+  /\.sidebar \{[\s\S]*?top: 0;[\s\S]*?width: 270px;/,
+  "the player sidebar must extend under the title bar with the playlist default width",
+);
+assert.match(
+  css,
+  /\.sidebar-tabs \{[\s\S]*?min-height: 76px;[\s\S]*?padding-top: 28px;/,
+  "sidebar tabs must preserve IINA's 28 px title-bar downshift and 48 px tab row",
+);
+assert.doesNotMatch(
+  css,
+  /@media \(max-width: 760px\) \{[\s\S]*?\.sidebar \{[\s\S]*?width: 100vw;/,
+  "Retina player windows below 760 CSS px must not turn the sidebar into a full-window sheet",
+);
+for (const contract of [
+  'function sidebarWidthForTab(tab)',
+  'tab === "playlist" || tab === "chapters"',
+  'Number(getPreferenceValue("playlistWidth")) || 270',
+  'return Math.min(400, Math.max(240, preferred));',
+  'els.sidebar.style.width = `${sidebarWidthForTab(nextState.sidebar.tab)}px`;',
+]) {
+  assert.ok(frontend.includes(contract), `Missing IINA sidebar sizing contract: ${contract}`);
 }
 for (const contract of [
   "SwapSubtitleTracks",

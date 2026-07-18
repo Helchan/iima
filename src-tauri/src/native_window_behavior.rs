@@ -72,6 +72,11 @@ mod imp {
             represented_path: *const c_char,
             plain_title: *const c_char,
         ) -> c_int;
+        fn iima_native_set_player_window_chrome_visible(
+            window: *mut c_void,
+            visible: c_int,
+            animated: c_int,
+        ) -> c_int;
         fn iima_native_set_window_theme(window: *mut c_void, theme: c_int);
         fn iima_native_window_is_legacy_fullscreen(window: *mut c_void) -> c_int;
         fn iima_native_set_legacy_fullscreen(
@@ -298,6 +303,27 @@ mod imp {
         }
     }
 
+    pub fn set_player_window_chrome_visible(
+        window: *mut c_void,
+        visible: bool,
+        animated: bool,
+    ) -> Result<(), String> {
+        let window = require_window(window)?;
+        let status = unsafe {
+            iima_native_set_player_window_chrome_visible(
+                window,
+                c_int::from(visible),
+                c_int::from(animated),
+            )
+        };
+        match status {
+            0 => Ok(()),
+            value => Err(format!(
+                "failed to synchronize native player window chrome ({value})"
+            )),
+        }
+    }
+
     pub fn set_window_theme(window: *mut c_void, theme: i64) -> Result<(), String> {
         let window = require_window(window)?;
         unsafe { iima_native_set_window_theme(window, theme as c_int) };
@@ -512,6 +538,14 @@ mod imp {
         Ok(())
     }
 
+    pub fn set_player_window_chrome_visible(
+        _window: *mut c_void,
+        _visible: bool,
+        _animated: bool,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
     pub fn is_legacy_fullscreen(_window: *mut c_void) -> bool {
         false
     }
@@ -598,6 +632,7 @@ mod tests {
             "iima_native_prepare_player_window_close",
             "iima_native_configure_player_presentation",
             "iima_native_sync_player_window_title",
+            "iima_native_set_player_window_chrome_visible",
             "window.releasedWhenClosed = NO;",
             "IINAWelcomeWindow",
             "window.representedURL = representedURL;",
@@ -606,6 +641,9 @@ mod tests {
             "IIMALegacyState(window) != nil",
             "path.lastPathComponent",
             "window.titleVisibility = initial != 0 ? NSWindowTitleHidden : NSWindowTitleVisible;",
+            "NSWindowDocumentIconButton",
+            "IIMAPlayerWindowTitleTextField",
+            "context.duration = 0.25;",
             "NSApp.presentationOptions = state.presentationOptions;",
             "[window setFrame:state.frame display:YES animate:shouldAnimate]",
             "NSScreen.screens",
@@ -614,7 +652,12 @@ mod tests {
             "NSWorkspaceWillSleepNotification",
             "IOPSCopyPowerSourcesInfo",
             "kIOPSInternalBatteryType",
-            "NSEventMaskScrollWheel | NSEventMaskPressure | NSEventMaskMagnify",
+            "NSEventMaskLeftMouseDown |",
+            "NSEventMaskLeftMouseDragged |",
+            "NSEventMaskLeftMouseUp |",
+            "NSEventMaskScrollWheel |",
+            "NSEventMaskPressure |",
+            "NSEventMaskMagnify;",
             "event.hasPreciseScrollingDeltas",
             "event.isDirectionInvertedFromDevice",
             "NSWindowWillStartLiveResizeNotification",

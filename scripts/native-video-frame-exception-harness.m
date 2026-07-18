@@ -18,12 +18,15 @@
 @property(nonatomic) NSUInteger remainingThrows;
 @property(nonatomic) BOOL commitFrameBeforeThrow;
 @property(nonatomic) BOOL lastDisplayArgument;
+@property(nonatomic, strong) NSView *contentView;
+@property(nonatomic) NSUInteger invalidateShadowCalls;
 @end
 
 @interface IIMAFakeFrameParentWindow : NSObject
 @property(nonatomic) NSRect frame;
 @property(nonatomic) BOOL visible;
 @property(nonatomic) NSInteger number;
+@property(nonatomic) NSWindowStyleMask styleMask;
 @property(nonatomic, strong) IIMAFakeFrameVideoWindow *childWindow;
 @end
 
@@ -77,6 +80,10 @@
 
 - (void)close {
   self.closeCalls += 1;
+}
+
+- (void)invalidateShadow {
+  self.invalidateShadowCalls += 1;
 }
 @end
 
@@ -222,6 +229,62 @@ static void IIMATestExceptionIsCaughtAndRetried(void) {
   IIMARemoveFakeSession(session);
 }
 
+static void IIMATestChildWindowShapeTracksParentPresentation(void) {
+  NSString *session = @"window-shape";
+  IIMAFakeFrameParentWindow *parent = [IIMAFakeFrameParentWindow new];
+  parent.frame = NSMakeRect(20, 40, 960, 540);
+  parent.styleMask = NSWindowStyleMaskTitled | NSWindowStyleMaskResizable;
+
+  IIMAFakeFrameVideoWindow *video = [IIMAFakeFrameVideoWindow new];
+  video.frame = parent.frame;
+  NSView *frameView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 960, 540)];
+  NSView *contentView = [[NSView alloc] initWithFrame:frameView.bounds];
+  [frameView addSubview:contentView];
+  video.contentView = contentView;
+
+  IIMAFakeFrameVideoView *view = [IIMAFakeFrameVideoView new];
+  view.fakeContext = [IIMAFakeFrameOpenGLContext new];
+  IIMAInstallFakeSession(session, parent, video, view);
+
+  IIMARequire(iima_native_video_apply_window_frame(session, NO),
+              @"titled window shape synchronization failed");
+  IIMARequire(frameView.wantsLayer && frameView.layer != nil,
+              @"video frame container did not become layer-backed");
+  IIMARequire(frameView.layer.cornerRadius == 10.0,
+              @"ordinary titled parent did not apply the player corner radius");
+  IIMARequire(frameView.layer.masksToBounds,
+              @"video frame container does not clip its child OpenGL surface");
+  IIMARequire(CGColorEqualToColor(frameView.layer.backgroundColor, NSColor.blackColor.CGColor),
+              @"video frame container does not own the black background");
+  if (@available(macOS 10.15, *)) {
+    IIMARequire([frameView.layer.cornerCurve isEqualToString:kCACornerCurveContinuous],
+                @"ordinary player corners are not continuous AppKit-style corners");
+  }
+
+  parent.styleMask |= NSWindowStyleMaskFullScreen;
+  IIMARequire(iima_native_video_apply_window_frame(session, NO),
+              @"native fullscreen shape synchronization failed");
+  IIMARequire(frameView.layer.cornerRadius == 0.0,
+              @"native fullscreen retained rounded child-window corners");
+  IIMARequire(frameView.layer.masksToBounds,
+              @"native fullscreen discarded the outer clipping boundary");
+
+  parent.styleMask = NSWindowStyleMaskBorderless;
+  IIMARequire(iima_native_video_apply_window_frame(session, NO),
+              @"legacy fullscreen shape synchronization failed");
+  IIMARequire(frameView.layer.cornerRadius == 0.0,
+              @"legacy untitled fullscreen retained rounded child-window corners");
+
+  parent.styleMask = NSWindowStyleMaskTitled | NSWindowStyleMaskResizable;
+  IIMARequire(iima_native_video_apply_window_frame(session, NO),
+              @"windowed shape restoration failed");
+  IIMARequire(frameView.layer.cornerRadius == 10.0,
+              @"leaving fullscreen did not restore rounded player corners");
+  IIMARequire(video.invalidateShadowCalls == 4,
+              @"player shadow was not refreshed for every shape transition");
+  IIMARemoveFakeSession(session);
+}
+
 static void IIMATestNotificationBurstRestartsQuietPeriod(void) {
   NSString *session = @"notification-debounce";
   IIMAFakeFrameParentWindow *parent = [IIMAFakeFrameParentWindow new];
@@ -361,12 +424,13 @@ static void IIMATestSessionRemovalCancelsPendingFrameWork(void) {
 int main(void) {
   @autoreleasepool {
     iima_native_video_ensure_sessions();
+    IIMATestChildWindowShapeTracksParentPresentation();
     IIMATestNotificationBurstRestartsQuietPeriod();
     IIMATestExceptionIsCaughtAndRetried();
     IIMATestPartialFrameCommitRefreshesOpenGLSurface();
     IIMATestPersistentExceptionIsBounded();
     IIMATestSessionRemovalCancelsPendingFrameWork();
-    printf("native video frame exception harness: 5 scenarios passed\n");
+    printf("native video frame exception harness: 6 scenarios passed\n");
   }
   return 0;
 }

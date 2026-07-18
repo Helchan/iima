@@ -35,6 +35,7 @@ import {
   normalizeMouseClickAction,
 } from "./mouse-actions.js";
 import { FirstMouseGate } from "./first-mouse.js";
+import { reconcileOscToolbarLayout } from "./osc-toolbar-layout.js";
 import { iinaTimelineSeekPlan } from "./timeline-seek.js";
 import {
   IinaScrollGestureState,
@@ -139,6 +140,14 @@ import {
   normalizePluginEventName,
   pluginChangedMpvProperty,
 } from "./plugin-events.js";
+import { isMacOSHost } from "./platform.js";
+
+const runningOnMacOS = isMacOSHost({
+  userAgentDataPlatform: navigator.userAgentData?.platform,
+  platform: navigator.platform,
+  userAgent: navigator.userAgent,
+});
+if (runningOnMacOS) document.documentElement.classList.add("platform-macos");
 
 await initializeLocalization();
 
@@ -2042,6 +2051,7 @@ let magnifyFullscreenHandled = false;
 let surfaceWindowDragState;
 let suppressSurfaceClickUntil = 0;
 let firstMouseGate;
+let oscToolbarLayoutFingerprint;
 
 const RUNTIME_SNAPSHOT_POLL_MS = 100;
 const OSC_TIME_PRECISE_REFRESH_MS = 40;
@@ -2159,6 +2169,7 @@ els.osc.addEventListener("pointerdown", beginOscDrag);
 els.osc.addEventListener("pointermove", updateOscDrag);
 els.osc.addEventListener("pointerup", finishOscDrag);
 els.osc.addEventListener("pointercancel", finishOscDrag);
+els.player.addEventListener("mousedown", preventPlayerChromeButtonMouseFocus, { capture: true });
 els.player.addEventListener("contextmenu", (event) => {
   if (isInteractiveMouseTarget(event.target)) event.preventDefault();
 });
@@ -6683,6 +6694,14 @@ function isInteractiveMouseTarget(target) {
   return Boolean(target.closest("button,input,textarea,select,a,[role='button'],.osc,.top-bar,.sidebar,.thumbnail-peek,.url-window,.online-subtitles-accessory"));
 }
 
+function preventPlayerChromeButtonMouseFocus(event) {
+  if (event.button !== 0 || !(event.target instanceof Element)) return;
+  if (!event.target.closest(".osc button,.top-bar button")) return;
+  // IINA's OSC and title-bar buttons refuse first responder. Preventing WebKit's mousedown
+  // default keeps mouse clicks functional without leaking the browser focus ring.
+  event.preventDefault();
+}
+
 function setButtonIcon(button, source, label) {
   const icon = button.querySelector(".button-icon");
   if (icon && icon.getAttribute("src") !== source) {
@@ -6964,14 +6983,12 @@ function renderOscToolbar(nextState, { hasMedia, hasAudio, hasVideo }) {
     [5, els.subTrackButton],
     [6, els.screenshotButton],
   ]);
-  for (const button of buttons.values()) button.hidden = true;
-  for (const buttonType of configured) {
-    const button = buttons.get(buttonType);
-    if (!button) continue;
-    button.hidden = false;
-    els.oscToolbarGroup.append(button);
-  }
-  els.oscToolbarGroup.style.width = `${Math.max(24, configured.length * (configured.length === 5 ? 20 : 24))}px`;
+  oscToolbarLayoutFingerprint = reconcileOscToolbarLayout({
+    container: els.oscToolbarGroup,
+    buttons,
+    configured,
+    previousFingerprint: oscToolbarLayoutFingerprint,
+  });
   els.settingsButton.disabled = !hasMedia;
   els.playlistButton.disabled = !hasMedia;
   els.pipButton.disabled = !hasVideo || nativeVideoRenderer?.pip_available === false;
@@ -12294,9 +12311,18 @@ function dropTargetData(dataTransfer) {
   };
 }
 
+function sidebarWidthForTab(tab) {
+  if (tab === "playlist" || tab === "chapters") {
+    const preferred = Number(getPreferenceValue("playlistWidth")) || 270;
+    return Math.min(400, Math.max(240, preferred));
+  }
+  return 360;
+}
+
 function renderSidebar(nextState) {
   hidePlaylistContextMenu();
   els.sidebarContent.oncontextmenu = null;
+  els.sidebar.style.width = `${sidebarWidthForTab(nextState.sidebar.tab)}px`;
   updatePluginSidebarTabVisibility(nextState);
   const pluginRuntime = activePluginSidebarId ? pluginRuntimes.get(activePluginSidebarId) : null;
   if (pluginRuntime?.sidebar) {

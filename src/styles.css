@@ -12,8 +12,14 @@
   --control: rgba(255, 255, 255, 0.13);
   --control-hover: rgba(255, 255, 255, 0.2);
   --radius: 7px;
+  --player-titlebar-height: 22px;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
   font-size: 13px;
+}
+
+html.platform-macos {
+  /* IINA raises the modern macOS title bar from its 22 pt XIB baseline to 28 pt. */
+  --player-titlebar-height: 28px;
 }
 
 * {
@@ -3129,6 +3135,22 @@ button {
   height: 100%;
   overflow: hidden;
   background: #000;
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.player-window input[type="text"],
+.player-window input[type="search"],
+.player-window input[type="url"],
+.player-window input[type="email"],
+.player-window input[type="password"],
+.player-window input[type="number"],
+.player-window textarea,
+.player-window [contenteditable="true"] {
+  cursor: text;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .video-stage {
@@ -3427,13 +3449,19 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 22px;
+  height: var(--player-titlebar-height);
   padding: 0 76px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(24, 24, 26, 0.42);
   backdrop-filter: blur(18px);
-  pointer-events: none;
-  transition: opacity 160ms ease;
+  pointer-events: auto;
+  transition: opacity 250ms ease;
+}
+
+.platform-macos .media-title {
+  /* AppKit owns the one player title and document icon. This node remains only as a state mirror
+     on macOS; rendering it there would duplicate the native title. */
+  display: none;
 }
 
 .media-title {
@@ -3491,7 +3519,7 @@ button {
   box-shadow: 0 5px 18px rgba(0, 0, 0, 0.36);
   transform: translateX(-50%);
   backdrop-filter: blur(22px) saturate(120%);
-  transition: opacity 160ms ease;
+  transition: opacity 250ms ease;
 }
 
 .player-window--osc-floating .osc {
@@ -3590,7 +3618,7 @@ button {
 }
 
 .player-window--osc-top .osc {
-  top: 22px;
+  top: var(--player-titlebar-height);
   bottom: auto;
   border-top: 0;
 }
@@ -3685,6 +3713,12 @@ button {
   background: transparent;
   color: rgba(255, 255, 255, 0.82);
   line-height: 1;
+}
+
+.osc button:focus,
+.top-bar button:focus {
+  outline: none;
+  box-shadow: none;
 }
 
 .button-icon {
@@ -4288,10 +4322,10 @@ button {
 
 .sidebar {
   position: absolute;
-  top: 22px;
+  top: 0;
   right: 0;
   bottom: 0;
-  width: min(360px, 44vw);
+  width: 270px;
   border-left: 1px solid var(--stroke);
   background: rgba(31, 32, 35, 0.86);
   backdrop-filter: blur(24px);
@@ -4300,7 +4334,8 @@ button {
 .sidebar-tabs {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  min-height: 44px;
+  min-height: 76px;
+  padding-top: 28px;
   border-bottom: 1px solid var(--stroke);
 }
 
@@ -5210,10 +5245,6 @@ html[data-window-role="preferences"] .preferences-titlebar {
 }
 
 @media (max-width: 760px) {
-  .sidebar {
-    width: 100vw;
-  }
-
   .preferences-window {
     grid-template-columns: 1fr;
     width: calc(100vw - 24px);

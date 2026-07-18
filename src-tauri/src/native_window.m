@@ -30,8 +30,10 @@ typedef void (*IIMAMiniPlayerLayoutCallback)(const char *windowLabel,
 static const CGFloat IIMAMiniPlayerControlHeight = 72.0;
 static const CGFloat IIMAMiniPlayerDefaultPlaylistHeight = 300.0;
 static const CGFloat IIMAMiniPlayerAutoHidePlaylistThreshold = 200.0;
+static const CGFloat IIMAPlayerMinimumInitialDragDistance = 3.0;
 
 static NSMapTable<NSWindow *, NSString *> *IIMAPlayerInputWindows;
+static NSMapTable<NSWindow *, NSValue *> *IIMAPlayerTitleDragStarts;
 static id IIMAPlayerInputMonitor;
 static IIMAPlayerInputCallback IIMAPlayerInputHandler;
 static void *IIMAPlayerInputContext;
@@ -444,6 +446,16 @@ int iima_native_set_plugin_window_frame(void *windowPointer,
 @implementation IIMALegacyFullscreenState
 @end
 
+@interface IIMAPlayerWindowChromeState : NSObject
+@property(nonatomic) BOOL initialized;
+@property(nonatomic) BOOL visible;
+@property(nonatomic) BOOL animating;
+@property(nonatomic) NSUInteger generation;
+@end
+
+@implementation IIMAPlayerWindowChromeState
+@end
+
 static char IIMALegacyFullscreenStateKey;
 static char IIMALegacyScreenObserverKey;
 static char IIMABlackoutWindowsKey;
@@ -451,11 +463,80 @@ static char IIMABlackoutScreenKey;
 static char IIMABlackoutScreenCountKey;
 static char IIMAScreenParametersObserverKey;
 static char IIMAPlayerWindowTitleFingerprintKey;
+static char IIMAPlayerWindowChromeStateKey;
 
 void iima_native_set_blackout_other_monitors(void *windowPointer, int enabled);
 
 static IIMALegacyFullscreenState *IIMALegacyState(NSWindow *window) {
   return objc_getAssociatedObject(window, &IIMALegacyFullscreenStateKey);
+}
+
+static IIMAPlayerWindowChromeState *IIMAPlayerChromeState(NSWindow *window) {
+  IIMAPlayerWindowChromeState *state = objc_getAssociatedObject(
+    window, &IIMAPlayerWindowChromeStateKey);
+  if (state == nil) {
+    state = [[IIMAPlayerWindowChromeState alloc] init];
+    objc_setAssociatedObject(window, &IIMAPlayerWindowChromeStateKey, state,
+                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  }
+  return state;
+}
+
+static NSTextField *IIMAPlayerWindowTitleTextField(NSWindow *window) {
+  NSButton *closeButton = [window standardWindowButton:NSWindowCloseButton];
+  for (NSView *view in closeButton.superview.subviews) {
+    if ([view isKindOfClass:NSTextField.class]) {
+      NSTextField *titleTextField = (NSTextField *)view;
+      titleTextField.editable = NO;
+      titleTextField.selectable = NO;
+      titleTextField.refusesFirstResponder = YES;
+      return titleTextField;
+    }
+  }
+  return nil;
+}
+
+static BOOL IIMAPlayerTitleContainsEvent(NSWindow *window, NSEvent *event) {
+  if (window == nil || event.window != window ||
+      (window.styleMask & NSWindowStyleMaskFullScreen) != 0) return NO;
+  NSTextField *titleTextField = IIMAPlayerWindowTitleTextField(window);
+  if (titleTextField == nil || titleTextField.hidden || titleTextField.alphaValue <= 0.01) return NO;
+  NSRect titleRect = [titleTextField convertRect:titleTextField.bounds toView:nil];
+  return NSPointInRect(event.locationInWindow, titleRect);
+}
+
+static NSArray<NSButton *> *IIMAPlayerWindowStandardButtons(NSWindow *window) {
+  NSMutableArray<NSButton *> *buttons = [NSMutableArray arrayWithCapacity:4];
+  const NSWindowButton types[] = {
+    NSWindowCloseButton,
+    NSWindowMiniaturizeButton,
+    NSWindowZoomButton,
+    NSWindowDocumentIconButton,
+  };
+  for (NSUInteger index = 0; index < sizeof(types) / sizeof(types[0]); index += 1) {
+    NSButton *button = [window standardWindowButton:types[index]];
+    if (button != nil) [buttons addObject:button];
+  }
+  return buttons;
+}
+
+static void IIMAApplyPlayerWindowChromeAlpha(NSWindow *window, CGFloat alpha) {
+  for (NSButton *button in IIMAPlayerWindowStandardButtons(window)) {
+    button.hidden = NO;
+    button.enabled = YES;
+    button.alphaValue = alpha;
+  }
+  NSTextField *titleTextField = IIMAPlayerWindowTitleTextField(window);
+  titleTextField.hidden = NO;
+  titleTextField.alphaValue = alpha;
+}
+
+static void IIMAPreparePlayerWindowChromeForAnimation(NSWindow *window) {
+  for (NSButton *button in IIMAPlayerWindowStandardButtons(window)) {
+    button.hidden = NO;
+    button.enabled = YES;
+  }
+  IIMAPlayerWindowTitleTextField(window).hidden = NO;
 }
 
 // Mirrors MainWindowController.updateTitle: local absolute files participate in AppKit's
@@ -509,6 +590,58 @@ int iima_native_sync_player_window_title(void *windowPointer,
                              OBJC_ASSOCIATION_COPY_NONATOMIC);
   });
   return status;
+}
+
+// MainWindowController has a single AppKit-owned title. Its traffic lights, document icon and
+// title text participate in the same fadeable UI state as titleBarView and the OSC. The WebView
+// supplies only the titlebar material/accessory surface; it must never draw a second filename.
+int iima_native_set_player_window_chrome_visible(void *windowPointer,
+                                                  int visible,
+                                                  int animated) {
+  if (windowPointer == NULL) return -1;
+  IIMARunOnMainQueueSync(^{
+    NSWindow *window = (__bridge NSWindow *)windowPointer;
+    IIMAPlayerWindowChromeState *state = IIMAPlayerChromeState(window);
+    BOOL shouldShow = visible != 0;
+    if (state.initialized && state.visible == shouldShow) {
+      if (!state.animating) {
+        IIMAApplyPlayerWindowChromeAlpha(window, shouldShow ? 1.0 : 1e-100);
+        IIMAPlayerWindowTitleTextField(window).alphaValue = shouldShow ? 1.0 : 0.0;
+      }
+      return;
+    }
+
+    state.initialized = YES;
+    state.visible = shouldShow;
+    state.animating = animated != 0;
+    state.generation += 1;
+    NSUInteger generation = state.generation;
+
+    void (^finish)(void) = ^{
+      IIMAPlayerWindowChromeState *current = IIMAPlayerChromeState(window);
+      if (current.generation != generation || current.visible != shouldShow) return;
+      current.animating = NO;
+      IIMAApplyPlayerWindowChromeAlpha(window, shouldShow ? 1.0 : 1e-100);
+      IIMAPlayerWindowTitleTextField(window).alphaValue = shouldShow ? 1.0 : 0.0;
+    };
+
+    if (animated == 0) {
+      finish();
+      return;
+    }
+    // Do not force the opposite endpoint before animating. When the pointer reverses direction
+    // during the 250 ms fade, AppKit must retarget from the current presentation alpha instead of
+    // flashing through fully hidden or fully visible chrome first.
+    IIMAPreparePlayerWindowChromeForAnimation(window);
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+      context.duration = 0.25;
+      for (NSButton *button in IIMAPlayerWindowStandardButtons(window)) {
+        button.animator.alphaValue = shouldShow ? 1.0 : 0.0;
+      }
+      IIMAPlayerWindowTitleTextField(window).animator.alphaValue = shouldShow ? 1.0 : 0.0;
+    } completionHandler:finish];
+  });
+  return 0;
 }
 
 int iima_native_plan_legacy_exit_aspect_frame(double frameX,
@@ -903,15 +1036,50 @@ void iima_native_install_player_input_monitor(void *windowPointer,
     if (IIMAPlayerInputWindows == nil) {
       IIMAPlayerInputWindows = [NSMapTable weakToStrongObjectsMapTable];
     }
+    if (IIMAPlayerTitleDragStarts == nil) {
+      IIMAPlayerTitleDragStarts = [NSMapTable weakToStrongObjectsMapTable];
+    }
     IIMAPlayerInputHandler = callback;
     IIMAPlayerInputContext = context;
     [IIMAPlayerInputWindows setObject:label forKey:window];
     if (IIMAPlayerInputMonitor != nil) return;
-    NSEventMask mask = NSEventMaskScrollWheel | NSEventMaskPressure | NSEventMaskMagnify;
+    NSEventMask mask = NSEventMaskLeftMouseDown |
+      NSEventMaskLeftMouseDragged |
+      NSEventMaskLeftMouseUp |
+      NSEventMaskScrollWheel |
+      NSEventMaskPressure |
+      NSEventMaskMagnify;
     IIMAPlayerInputMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:mask
       handler:^NSEvent * _Nullable(NSEvent *event) {
         NSString *targetLabel = [IIMAPlayerInputWindows objectForKey:event.window];
         if (targetLabel == nil) return event;
+        if (event.type == NSEventTypeLeftMouseDown) {
+          // AppKit owns the represented filename and proxy icon, so WebKit's Tauri drag region
+          // never sees a press over the native title text. Match IINA's MainWindowController:
+          // remember the press and wait for a real drag beyond its 3 pt sensitivity threshold.
+          if (IIMAPlayerTitleContainsEvent(event.window, event)) {
+            [IIMAPlayerTitleDragStarts setObject:[NSValue valueWithPoint:event.locationInWindow]
+                                           forKey:event.window];
+          } else {
+            [IIMAPlayerTitleDragStarts removeObjectForKey:event.window];
+          }
+          return event;
+        }
+        if (event.type == NSEventTypeLeftMouseDragged) {
+          NSValue *startValue = [IIMAPlayerTitleDragStarts objectForKey:event.window];
+          if (startValue == nil) return event;
+          NSPoint start = startValue.pointValue;
+          CGFloat distance = hypot(event.locationInWindow.x - start.x,
+                                   event.locationInWindow.y - start.y);
+          if (distance <= IIMAPlayerMinimumInitialDragDistance) return event;
+          [IIMAPlayerTitleDragStarts removeObjectForKey:event.window];
+          [event.window performWindowDragWithEvent:event];
+          return nil;
+        }
+        if (event.type == NSEventTypeLeftMouseUp) {
+          [IIMAPlayerTitleDragStarts removeObjectForKey:event.window];
+          return event;
+        }
         IIMAEmitPlayerInput(event, targetLabel);
         // Scroll and magnify are rerouted through the Tauri event so the WebView
         // can apply IINA's hit-test rules without losing AppKit phase metadata.
@@ -926,12 +1094,14 @@ void iima_native_remove_player_input_monitor(void *windowPointer) {
   IIMARunOnMainQueueSync(^{
     NSWindow *window = (__bridge NSWindow *)windowPointer;
     [IIMAPlayerInputWindows removeObjectForKey:window];
+    [IIMAPlayerTitleDragStarts removeObjectForKey:window];
   });
 }
 
 void iima_native_remove_all_player_input_monitors(void) {
   IIMARunOnMainQueueSync(^{
     [IIMAPlayerInputWindows removeAllObjects];
+    [IIMAPlayerTitleDragStarts removeAllObjects];
     if (IIMAPlayerInputMonitor != nil) {
       [NSEvent removeMonitor:IIMAPlayerInputMonitor];
       IIMAPlayerInputMonitor = nil;

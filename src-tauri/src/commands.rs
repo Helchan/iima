@@ -1482,7 +1482,8 @@ fn open_player_window_for_session<R: Runtime>(
     #[cfg(target_os = "macos")]
     let mut builder = builder
         .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true);
+        .hidden_title(true)
+        .accept_first_mouse(true);
     #[cfg(not(target_os = "macos"))]
     let mut builder = builder;
     if !presentation.resizable {
@@ -5423,7 +5424,8 @@ fn enter_music_mode_window_for_session<R: Runtime>(
             #[cfg(target_os = "macos")]
             let builder = builder
                 .title_bar_style(tauri::TitleBarStyle::Overlay)
-                .hidden_title(true);
+                .hidden_title(true)
+                .accept_first_mouse(true);
             builder
                 .always_on_top(always_on_top)
                 .build()
@@ -5808,6 +5810,40 @@ fn sync_player_window_title<R: Runtime>(
     Ok(())
 }
 
+fn player_window_chrome_visible(snapshot: &PlayerState, fullscreen: bool) -> bool {
+    player_state_uses_media_window(snapshot) && snapshot.osc_visible && !fullscreen
+}
+
+fn sync_player_window_chrome_for_fullscreen<R: Runtime>(
+    window: &WebviewWindow<R>,
+    snapshot: &PlayerState,
+    fullscreen: bool,
+) -> Result<(), String> {
+    if !is_player_window_label(window.label()) || is_plugin_disable_ui_player_window(window) {
+        return Ok(());
+    }
+    #[cfg(target_os = "macos")]
+    native_window_behavior::set_player_window_chrome_visible(
+        window.ns_window().map_err(|error| error.to_string())?,
+        player_window_chrome_visible(snapshot, fullscreen),
+        true,
+    )?;
+    #[cfg(not(target_os = "macos"))]
+    let _ = (snapshot, fullscreen);
+    Ok(())
+}
+
+fn sync_player_window_chrome<R: Runtime>(
+    window: &WebviewWindow<R>,
+    snapshot: &PlayerState,
+) -> Result<(), String> {
+    sync_player_window_chrome_for_fullscreen(
+        window,
+        snapshot,
+        player_window_is_fullscreen(window)?,
+    )
+}
+
 fn prepare_initial_player_window(state: &AppState, session_label: &str) -> Result<(), String> {
     state
         .player_window_lifecycle
@@ -5843,6 +5879,7 @@ fn sync_player_window_surface<R: Runtime>(
     let window = app.get_webview_window(session_label);
     if let Some(window) = window.as_ref() {
         sync_player_window_title(window, snapshot)?;
+        sync_player_window_chrome(window, snapshot)?;
     }
     if !observe_player_window_surface(state, session_label, snapshot)? {
         return Ok(());
@@ -6183,6 +6220,15 @@ pub(crate) fn observe_player_window_lifecycle<R: Runtime>(
         let snapshot = player_snapshot_for_session(&session)?;
         emit_player_state_for_session(app, session.label(), &snapshot);
     }
+    // Native macOS fullscreen can also be entered through the green window button, outside the
+    // frontend fullscreen commands. Resized/moved/focus lifecycle events are therefore the
+    // authoritative fallback that keeps titlebar chrome aligned with the observed AppKit state.
+    let chrome_snapshot = session
+        .player()
+        .lock()
+        .map(|player| player.clone())
+        .map_err(|error| error.to_string())?;
+    sync_player_window_chrome_for_fullscreen(&window, &chrome_snapshot, fullscreen)?;
     if matches!(
         pip_toggle,
         Some(PipToggleDirective::Enter | PipToggleDirective::Exit)
@@ -6285,6 +6331,7 @@ pub(crate) fn set_player_window_fullscreen<R: Runtime>(
             .map(|player| player.clone())
             .map_err(|error| error.to_string())?;
         sync_player_window_title(window, &snapshot)?;
+        sync_player_window_chrome_for_fullscreen(window, &snapshot, fullscreen)?;
         crate::native_touch_bar::sync_session(app, state, session.label(), &snapshot)?;
         return Ok(fullscreen);
     }
@@ -6350,6 +6397,9 @@ pub(crate) fn set_player_window_fullscreen<R: Runtime>(
     // Re-evaluate the native fingerprint immediately: legacy fullscreen removes/restores
     // NSWindowStyleMaskTitled, which selects the safe lastPathComponent fallback.
     sync_player_window_title(window, &snapshot)?;
+    // Use the requested state explicitly. Native macOS fullscreen transitions may still be
+    // asynchronous here, while legacy fullscreen is tracked outside Tauri's is_fullscreen flag.
+    sync_player_window_chrome_for_fullscreen(window, &snapshot, fullscreen)?;
     crate::native_touch_bar::sync_session(app, state, session.label(), &snapshot)?;
     Ok(fullscreen)
 }
@@ -6451,8 +6501,9 @@ mod tests {
         mini_player_layout, mini_player_session_label, online_subtitle_preferences_for_request,
         open_media_batch_with_plan, open_url_submission_route, parse_video_time,
         percent_encode_query_component, playback_window_resize_action,
-        player_session_creation_index, player_window_title_plan, player_window_url_disables_ui,
-        player_window_url_is_plugin_managed, plugin_download_temporary_path,
+        player_session_creation_index, player_window_chrome_visible, player_window_title_plan,
+        player_window_url_disables_ui, player_window_url_is_plugin_managed,
+        plugin_download_temporary_path,
         plugin_file_handle_bytes, plugin_http_body, plugin_http_method, plugin_http_reason,
         plugin_http_response, plugin_http_response_is_ok, plugin_keychain_service,
         plugin_track_file_path, read_plugin_file_handle_to_end, recreate_directory,
@@ -6467,7 +6518,7 @@ mod tests {
     };
     use crate::mpv::{mpv_command, set_property, MpvFormat};
     use crate::online_subtitles::OpenSubtitlesSession;
-    use crate::player::{PlayerState, Track, TrackMetadata};
+    use crate::player::{PlayerMode, PlayerState, Track, TrackMetadata};
     use crate::playlist_actions::{IndexedPlaylistPath, PlaylistAutoAddPlan};
     use crate::preferences::{PreferenceChange, PreferenceStore};
     use crate::state::AppState;
@@ -6587,6 +6638,39 @@ mod tests {
                 "missing title sync contract: {contract}"
             );
         }
+    }
+
+    #[test]
+    fn player_window_chrome_follows_the_same_visibility_state_as_the_osc() {
+        let mut snapshot = PlayerState::default();
+        assert!(!player_window_chrome_visible(&snapshot, false));
+
+        snapshot.current_url = Some("/tmp/movie.mp4".to_string());
+        snapshot.mode = PlayerMode::Player;
+        snapshot.osc_visible = true;
+        assert!(player_window_chrome_visible(&snapshot, false));
+
+        snapshot.osc_visible = false;
+        assert!(!player_window_chrome_visible(&snapshot, false));
+
+        snapshot.osc_visible = true;
+        assert!(!player_window_chrome_visible(&snapshot, true));
+
+        let source = include_str!("commands.rs");
+        assert!(source.contains("player_window_is_fullscreen(window)?"));
+        assert!(source.contains(
+            "sync_player_window_chrome_for_fullscreen(window, &snapshot, fullscreen)?;"
+        ));
+        let lifecycle = source
+            .split("pub(crate) fn observe_player_window_lifecycle")
+            .nth(1)
+            .expect("player lifecycle function")
+            .split("pub(crate) fn remove_player_window_lifecycle")
+            .next()
+            .expect("player lifecycle body");
+        assert!(lifecycle.contains(
+            "sync_player_window_chrome_for_fullscreen(&window, &chrome_snapshot, fullscreen)?;"
+        ));
     }
 
     #[test]

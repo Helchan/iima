@@ -802,6 +802,55 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
+    fn macos_child_window_shape_preserves_native_corners_and_opengl_layer_ownership() {
+        let source = include_str!("native_video.m");
+
+        for contract in [
+            "videoWindow.backgroundColor = NSColor.clearColor;",
+            "videoWindow.opaque = NO;",
+            "NSView *frameView = contentView.superview ?: contentView;",
+            "frameLayer.backgroundColor = NSColor.blackColor.CGColor;",
+            "frameLayer.cornerRadius = iima_native_video_corner_radius_for_style_mask(parent.styleMask);",
+            "frameLayer.masksToBounds = YES;",
+            "frameLayer.cornerCurve = kCACornerCurveContinuous;",
+            "[videoWindow invalidateShadow];",
+            "BOOL fullscreen = (styleMask & NSWindowStyleMaskFullScreen) != 0;",
+            "BOOL titled = (styleMask & NSWindowStyleMaskTitled) != 0;",
+            "return fullscreen || !titled ? 0.0 : 10.0;",
+        ] {
+            assert!(
+                source.contains(contract),
+                "native child-window shape contract is missing: {contract}"
+            );
+        }
+        assert!(
+            !source.contains("view.layer.cornerRadius"),
+            "corner clipping must stay on the outer window frame, not the ICC/HDR CAOpenGLLayer"
+        );
+
+        let restore = source
+            .split_once("static void iima_native_video_restore_from_pip")
+            .and_then(|(_, suffix)| {
+                suffix
+                    .split_once("int iima_native_video_install")
+                    .map(|(body, _)| body)
+            })
+            .expect("PIP restore segment");
+        assert!(restore.contains("iima_native_video_sync_window_shape("));
+
+        let apply = source
+            .split_once("static BOOL iima_native_video_apply_window_frame")
+            .and_then(|(_, suffix)| {
+                suffix
+                    .split_once("static void iima_native_video_schedule_window_frame_retry")
+                    .map(|(body, _)| body)
+            })
+            .expect("child-window frame synchronization segment");
+        assert!(apply.contains("iima_native_video_sync_window_shape(videoWindow, parent);"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
     fn macos_native_video_registry_access_is_main_thread_serialized() {
         let source = include_str!("native_video.m");
 
