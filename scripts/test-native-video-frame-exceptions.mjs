@@ -51,7 +51,12 @@ if (process.platform !== "darwin") {
     assert.equal(
       run.status,
       0,
-      `Native video Objective-C harness failed:\n${run.stdout}${run.stderr}`,
+      `Native video Objective-C exception/live-resize harness failed:\n${run.stdout}${run.stderr}`,
+    );
+    assert.match(
+      run.stdout,
+      /exception\/live-resize harness: 10 scenarios passed/,
+      `Native video harness did not execute the live-resize contract:\n${run.stdout}${run.stderr}`,
     );
     process.stdout.write(run.stdout);
 

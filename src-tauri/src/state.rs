@@ -8,8 +8,8 @@ use std::time::Duration;
 use crate::history::{PlaybackHistoryItem, PlaybackHistoryStore};
 use crate::key_bindings::KeyBindingRepository;
 use crate::mpv::{
-    build_mpv_process_environment_plan, MpvExecutor, MpvExecutorStatus,
-    MpvProcessEnvironmentBaseline, MpvStartupConfiguration, MpvWakeupHandle,
+    build_mpv_process_environment_plan, sync_mpv_executor_from_player_log, MpvExecutor,
+    MpvExecutorStatus, MpvProcessEnvironmentBaseline, MpvStartupConfiguration, MpvWakeupHandle,
 };
 use crate::native_video;
 use crate::online_subtitles::{
@@ -867,13 +867,12 @@ impl AppState {
                 player.mpv_operation_log.clone(),
             )
         };
-        let status = self
-            .mpv_executor
-            .lock()
-            .map(|mut executor| {
-                executor.submit_player_operation_log(first_sequence, next_sequence, &operations)
-            })
-            .map_err(|error| error.to_string())?;
+        let status = sync_mpv_executor_from_player_log(
+            &self.mpv_executor,
+            first_sequence,
+            next_sequence,
+            &operations,
+        )?;
         self.apply_new_mpv_events(&status)?;
         Ok(status)
     }
@@ -977,12 +976,7 @@ impl AppState {
             || status.client_running
         {
             let mut player = self.player.lock().map_err(|error| error.to_string())?;
-            if !events.is_empty() {
-                player.apply_mpv_events(&events);
-            }
-            if !status.polled_properties.is_empty() {
-                player.apply_mpv_property_changes(&status.polled_properties);
-            }
+            player.apply_mpv_runtime_update(&events, &status.polled_properties);
             if !status.track_list.is_empty() {
                 player.apply_mpv_track_list(&status.track_list);
             }
@@ -1172,13 +1166,12 @@ impl PlayerSessionRef<'_> {
         let Self::Secondary { session, .. } = self else {
             unreachable!("main session returned above")
         };
-        let status = session
-            .mpv_executor
-            .lock()
-            .map(|mut executor| {
-                executor.submit_player_operation_log(first_sequence, next_sequence, &operations)
-            })
-            .map_err(|error| error.to_string())?;
+        let status = sync_mpv_executor_from_player_log(
+            &session.mpv_executor,
+            first_sequence,
+            next_sequence,
+            &operations,
+        )?;
         self.apply_new_mpv_events(&status)?;
         Ok(status)
     }
@@ -1210,12 +1203,7 @@ impl PlayerSessionRef<'_> {
             || status.client_running
         {
             let mut player = session.player.lock().map_err(|error| error.to_string())?;
-            if !events.is_empty() {
-                player.apply_mpv_events(&events);
-            }
-            if !status.polled_properties.is_empty() {
-                player.apply_mpv_property_changes(&status.polled_properties);
-            }
+            player.apply_mpv_runtime_update(&events, &status.polled_properties);
             if !status.track_list.is_empty() {
                 player.apply_mpv_track_list(&status.track_list);
             }

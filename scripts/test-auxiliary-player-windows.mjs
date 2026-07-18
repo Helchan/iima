@@ -121,6 +121,10 @@ assert.match(css, /\.preferences-detail \{[\s\S]*?min-height: 0/);
 assert.match(runtime, /renderPreferences\(\);\s*els\.preferencesContent\.scrollTop = 0/);
 assert.match(runtime, /async function activateAuxiliaryWindowSurface\(/);
 assert.match(runtime, /invoke\("get_auxiliary_window_context"\)/);
+assert.match(
+  runtime,
+  /let nativeVideoRenderer = null;\s*if \(!isAuxiliaryWindow\) \{\s*try \{\s*nativeVideoRenderer = await invoke\("get_native_video_renderer_status"\)/,
+);
 assert.match(runtime, /invoke\("show_open_url_window"/);
 assert.match(runtime, /invoke\("show_filter_window"/);
 assert.match(runtime, /invoke\("show_preferences_window"/);

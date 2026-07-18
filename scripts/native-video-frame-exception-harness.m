@@ -18,6 +18,7 @@
 @property(nonatomic) NSUInteger remainingThrows;
 @property(nonatomic) BOOL commitFrameBeforeThrow;
 @property(nonatomic) BOOL lastDisplayArgument;
+@property(nonatomic, getter=isVisible) BOOL visible;
 @property(nonatomic, strong) NSView *contentView;
 @property(nonatomic) NSUInteger invalidateShadowCalls;
 @end
@@ -153,18 +154,30 @@ static void IIMARequire(BOOL condition, NSString *message) {
   }
 }
 
-static void IIMAPumpMainQueue(NSTimeInterval seconds) {
+static void IIMAPumpMainQueueInMode(NSRunLoopMode mode, NSTimeInterval seconds) {
   NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:seconds];
   while ([deadline timeIntervalSinceNow] > 0) {
     [[NSRunLoop currentRunLoop]
-      runMode:NSDefaultRunLoopMode
+      runMode:mode
       beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
   }
+}
+
+static void IIMAPumpMainQueue(NSTimeInterval seconds) {
+  IIMAPumpMainQueueInMode(NSDefaultRunLoopMode, seconds);
+}
+
+static void IIMAPumpEventTrackingMainQueue(NSTimeInterval seconds) {
+  IIMAPumpMainQueueInMode(NSEventTrackingRunLoopMode, seconds);
 }
 
 static void IIMARemoveFakeSession(NSString *session) {
   [iima_native_video_frame_retry_attempts removeObjectForKey:session];
   [iima_native_video_frame_update_generations removeObjectForKey:session];
+  [iima_native_video_live_frame_update_generations removeObjectForKey:session];
+  [iima_native_video_live_frame_updates removeObject:session];
+  [iima_native_video_live_resize_sessions removeObject:session];
+  [iima_native_video_suspended_live_frame_updates removeObject:session];
   [iima_native_video_force_surface_updates removeObject:session];
   iima_native_video_remove_window_observers(session);
   [iima_native_video_views removeObjectForKey:session];
@@ -206,26 +219,89 @@ static void IIMATestExceptionIsCaughtAndRetried(void) {
   IIMARequire(video.setFrameCalls == 1, @"initial frame update was not attempted exactly once");
   IIMARequire(iima_native_video_frame_retry_attempts[session] != nil, @"retry was not scheduled");
 
-  // Simulate more DidResize notifications arriving during the same animation. They must cancel
-  // the retry against the intermediate frame, retain the force-refresh requirement, and wait for
-  // a full quiet period before touching the child surface.
-  iima_native_video_schedule_window_frame_update(session);
-  iima_native_video_schedule_window_frame_update(session);
+  // The bounded recovery must remain available independently of live-resize coalescing. A
+  // transient WindowServer failure is retried after its short backoff and still performs the
+  // stronger surface refresh needed after a possible partial AppKit commit.
+  IIMAPumpMainQueue(0.15);
+  IIMARequire(video.setFrameCalls == 2, @"frame recovery did not run exactly once");
+  IIMARequire(!video.lastDisplayArgument, @"frame recovery requested synchronous display");
+  IIMARequire(NSEqualRects(video.frame, parent.frame), @"frame recovery did not apply target frame");
+  IIMARequire(parent.childWindow == video, @"frame recovery did not restore child ownership");
+  IIMARequire(video.orderCalls == 1, @"frame recovery did not restore child ordering");
+  IIMARequire(iima_native_video_frame_retry_attempts[session] == nil, @"successful recovery retained retry state");
+  IIMARequire(![iima_native_video_force_surface_updates containsObject:session], @"successful recovery retained force-refresh state");
+  IIMARemoveFakeSession(session);
+}
+
+static void IIMATestLiveResizeExceptionFallsBackToBoundedRetry(void) {
+  NSString *session = @"live-throw-before-commit";
+  IIMAFakeFrameParentWindow *parent = [IIMAFakeFrameParentWindow new];
+  parent.frame = NSMakeRect(40, 80, 960, 540);
+  IIMAFakeFrameVideoWindow *video = [IIMAFakeFrameVideoWindow new];
+  video.frame = NSMakeRect(0, 0, 640, 360);
+  video.remainingThrows = 1;
+  IIMAFakeFrameVideoView *view = [IIMAFakeFrameVideoView new];
+  view.fakeContext = [IIMAFakeFrameOpenGLContext new];
+  IIMAInstallFakeSession(session, parent, video, view);
+  iima_native_video_observe_parent_window(session);
+
+  [[NSNotificationCenter defaultCenter]
+    postNotificationName:NSWindowWillStartLiveResizeNotification
+                  object:parent];
   IIMAPumpMainQueue(0.02);
-  IIMARequire(video.setFrameCalls == 1, @"resize notification bypassed the quiet-period debounce");
-  IIMARequire(iima_native_video_frame_retry_attempts[session] == nil, @"superseded retry remained pending");
-  IIMARequire(iima_native_video_frame_update_generations[session] != nil, @"debounced recovery was not pending");
-  IIMARequire([iima_native_video_force_surface_updates containsObject:session], @"debounced recovery lost its force-refresh requirement");
+  IIMARequire(video.setFrameCalls == 1,
+              @"live fast path did not attempt the frame that throws");
+  IIMARequire(iima_native_video_frame_retry_attempts[session] != nil,
+              @"live fast-path exception did not enter bounded recovery");
+  IIMARequire([iima_native_video_force_surface_updates containsObject:session],
+              @"live fast-path exception lost the final surface-refresh requirement");
 
   IIMAPumpMainQueue(0.15);
-  IIMARequire(video.setFrameCalls == 2, @"debounced frame recovery did not run exactly once");
-  IIMARequire(!video.lastDisplayArgument, @"debounced frame recovery requested synchronous display");
-  IIMARequire(NSEqualRects(video.frame, parent.frame), @"debounced recovery did not apply target frame");
-  IIMARequire(parent.childWindow == video, @"debounced recovery did not restore child ownership");
-  IIMARequire(video.orderCalls == 1, @"debounced recovery did not restore child ordering");
-  IIMARequire(iima_native_video_frame_retry_attempts[session] == nil, @"successful recovery retained retry state");
-  IIMARequire(iima_native_video_frame_update_generations[session] == nil, @"successful recovery retained debounce state");
-  IIMARequire(![iima_native_video_force_surface_updates containsObject:session], @"successful recovery retained force-refresh state");
+  IIMARequire(video.setFrameCalls == 2,
+              @"live fast-path exception was not retried exactly once");
+  IIMARequire(NSEqualRects(video.frame, parent.frame),
+              @"live fast-path recovery did not apply the current parent frame");
+  IIMARequire(iima_native_video_frame_retry_attempts[session] == nil,
+              @"successful live fast-path recovery retained retry state");
+  IIMARemoveFakeSession(session);
+}
+
+static void IIMATestPersistentLiveResizeExceptionPreservesBackoff(void) {
+  NSString *session = @"live-persistent-throw";
+  IIMAFakeFrameParentWindow *parent = [IIMAFakeFrameParentWindow new];
+  parent.frame = NSMakeRect(40, 80, 640, 360);
+  IIMAFakeFrameVideoWindow *video = [IIMAFakeFrameVideoWindow new];
+  video.frame = NSMakeRect(0, 0, 320, 180);
+  video.remainingThrows = NSUIntegerMax;
+  IIMAFakeFrameVideoView *view = [IIMAFakeFrameVideoView new];
+  view.fakeContext = [IIMAFakeFrameOpenGLContext new];
+  IIMAInstallFakeSession(session, parent, video, view);
+  iima_native_video_observe_parent_window(session);
+
+  [[NSNotificationCenter defaultCenter]
+    postNotificationName:NSWindowWillStartLiveResizeNotification
+                  object:parent];
+  IIMAPumpMainQueue(0.02);
+  IIMARequire(video.setFrameCalls == 1,
+              @"persistent live exception did not begin with one fast-path attempt");
+  IIMARequire(iima_native_video_frame_retry_attempts[session].unsignedIntegerValue == 1,
+              @"persistent live exception did not retain retry attempt one");
+
+  // Keep emitting resize events beyond the complete 50/100/200 ms retry ladder. They must use
+  // the pending backoff instead of cancelling it and starting a new attempt for every event.
+  for (NSUInteger index = 0; index < 45; index += 1) {
+    parent.frame = NSMakeRect(40, 80, 641 + index, 361 + index);
+    [[NSNotificationCenter defaultCenter]
+      postNotificationName:NSWindowDidResizeNotification
+                    object:parent];
+    IIMAPumpMainQueue(0.01);
+  }
+  IIMARequire(video.setFrameCalls == 4,
+              @"continuous resize notifications bypassed the bounded retry ladder");
+  IIMARequire(iima_native_video_frame_retry_attempts[session] == nil,
+              @"persistent live exception retained a retry after the bounded ladder");
+  IIMARequire([iima_native_video_suspended_live_frame_updates containsObject:session],
+              @"persistent live exception did not suspend event-frequency fast updates");
   IIMARemoveFakeSession(session);
 }
 
@@ -285,55 +361,199 @@ static void IIMATestChildWindowShapeTracksParentPresentation(void) {
   IIMARemoveFakeSession(session);
 }
 
-static void IIMATestNotificationBurstRestartsQuietPeriod(void) {
-  NSString *session = @"notification-debounce";
+static void IIMATestLiveResizeTracksEveryMainQueueTurnAndFinalizes(void) {
+  NSString *session = @"live-resize";
   IIMAFakeFrameParentWindow *parent = [IIMAFakeFrameParentWindow new];
-  parent.frame = NSMakeRect(50, 60, 1024, 576);
+  parent.frame = NSMakeRect(50, 60, 640, 360);
+  parent.visible = YES;
+  parent.number = 73;
+  parent.styleMask = NSWindowStyleMaskTitled | NSWindowStyleMaskResizable;
   IIMAFakeFrameVideoWindow *video = [IIMAFakeFrameVideoWindow new];
-  video.frame = NSMakeRect(0, 0, 320, 180);
+  video.frame = parent.frame;
+  NSView *frameView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)];
+  NSView *contentView = [[NSView alloc] initWithFrame:frameView.bounds];
+  [frameView addSubview:contentView];
+  video.contentView = contentView;
   IIMAFakeFrameVideoView *view = [IIMAFakeFrameVideoView new];
   view.fakeContext = [IIMAFakeFrameOpenGLContext new];
   IIMAInstallFakeSession(session, parent, video, view);
   iima_native_video_observe_parent_window(session);
 
-  NSArray<NSNotificationName> *names = @[
-    NSWindowDidMoveNotification,
-    NSWindowDidResizeNotification,
-    NSWindowDidEnterFullScreenNotification,
-    NSWindowDidExitFullScreenNotification,
-    NSWindowDidChangeScreenNotification,
-  ];
-  uint64_t previousGeneration = 0;
-  for (NSNotificationName name in names) {
-    [[NSNotificationCenter defaultCenter] postNotificationName:name object:parent];
-    NSNumber *generation = iima_native_video_frame_update_generations[session];
-    IIMARequire(generation != nil, @"parent-window notification did not schedule a debounce");
-    IIMARequire(generation.unsignedLongLongValue > previousGeneration, @"parent-window notification did not advance the generation");
-    previousGeneration = generation.unsignedLongLongValue;
-    IIMARequire(video.setFrameCalls == 0, @"parent-window notification mutated the frame on its notification stack");
-  }
+  [[NSNotificationCenter defaultCenter]
+    postNotificationName:NSWindowWillStartLiveResizeNotification
+                  object:parent];
+  IIMARequire([iima_native_video_live_resize_sessions containsObject:session],
+              @"live-resize start notification did not activate the session");
 
-  // Let the first generation age most of the way to its deadline, then post one more resize. The
-  // old blocks must expire harmlessly while the new generation receives a fresh full 75 ms.
-  IIMAPumpMainQueue(0.04);
+  // Multiple resize notifications in one AppKit turn are coalesced, without synchronously
+  // mutating a child NSWindow from the notification stack.
+  parent.frame = NSMakeRect(50, 60, 800, 450);
   [[NSNotificationCenter defaultCenter]
     postNotificationName:NSWindowDidResizeNotification
                   object:parent];
-  uint64_t finalGeneration =
-    iima_native_video_frame_update_generations[session].unsignedLongLongValue;
-  IIMARequire(finalGeneration > previousGeneration, @"late burst event did not restart debounce generation");
-  IIMARequire(video.setFrameCalls == 0, @"late burst event mutated the frame on its notification stack");
+  [[NSNotificationCenter defaultCenter]
+    postNotificationName:NSWindowDidResizeNotification
+                  object:parent];
+  IIMARequire(video.setFrameCalls == 0,
+              @"live resize mutated the child window on the notification stack");
+  IIMARequire([iima_native_video_live_frame_updates containsObject:session],
+              @"live resize did not enqueue a main-turn update");
+  IIMAPumpMainQueue(0.02);
+  IIMARequire(video.setFrameCalls == 1,
+              @"same-turn resize notifications were not coalesced into one update");
+  IIMARequire(NSEqualRects(video.frame, parent.frame),
+              @"first live-resize turn did not apply the current parent frame");
+  IIMARequire(view.renderRequests == 1,
+              @"first live-resize turn did not request a renderer-owned paint");
+  IIMARequire(video.invalidateShadowCalls == 0,
+              @"live fast path performed expensive shape synchronization");
 
-  IIMAPumpMainQueue(0.05);
-  IIMARequire(video.setFrameCalls == 0, @"stale generation applied before the latest quiet period elapsed");
-  IIMARequire(iima_native_video_frame_update_generations[session] != nil, @"latest debounce was cleared by a stale generation");
+  // A resize arriving on the next run-loop turn must advance immediately instead of restarting a
+  // trailing 75 ms debounce. This is the contract required for video to track the drag smoothly.
+  parent.frame = NSMakeRect(50, 60, 960, 540);
+  [[NSNotificationCenter defaultCenter]
+    postNotificationName:NSWindowDidResizeNotification
+                  object:parent];
+  IIMAPumpMainQueue(0.02);
+  IIMARequire(video.setFrameCalls == 2,
+              @"next-turn resize did not advance the child window immediately");
+  IIMARequire(NSEqualRects(video.frame, parent.frame),
+              @"next live-resize turn did not use the latest parent frame");
+  IIMARequire(view.renderRequests == 2,
+              @"next live-resize turn did not request a paint");
 
-  IIMAPumpMainQueue(0.06);
-  IIMARequire(video.setFrameCalls == 1, @"notification burst was not debounced into one final update");
-  IIMARequire(!video.lastDisplayArgument, @"debounced update requested synchronous display");
-  IIMARequire(view.renderRequests == 1, @"debounced frame update did not request a renderer-owned paint");
-  IIMARequire(NSEqualRects(video.frame, parent.frame), @"debounced update used the wrong frame");
-  IIMARequire(iima_native_video_frame_update_generations[session] == nil, @"debounced update retained its generation");
+  // End-live-resize must run the full synchronization path even when the frame is already equal:
+  // refresh the OpenGL surface, restore shape/shadow, parent ownership, and ordering.
+  [[NSNotificationCenter defaultCenter]
+    postNotificationName:NSWindowDidEndLiveResizeNotification
+                  object:parent];
+  IIMARequire(![iima_native_video_live_resize_sessions containsObject:session],
+              @"live-resize end notification retained the active session");
+  IIMAPumpMainQueue(0.02);
+  IIMARequire(video.setFrameCalls == 2,
+              @"final full synchronization redundantly changed an equal frame");
+  IIMARequire(view.fakeContext.updateCalls == 1,
+              @"end-live-resize did not refresh the OpenGL context");
+  IIMARequire(view.renderRequests == 3,
+              @"end-live-resize did not request a final paint");
+  IIMARequire(video.invalidateShadowCalls == 1,
+              @"end-live-resize did not perform final shape synchronization");
+  IIMARequire(parent.childWindow == video,
+              @"end-live-resize did not restore child ownership");
+  IIMARequire(video.orderCalls == 1,
+              @"end-live-resize did not restore child ordering");
+  IIMARemoveFakeSession(session);
+}
+
+static void IIMATestLiveResizeTracksInsideEventTrackingMode(void) {
+  NSString *session = @"live-resize-event-tracking";
+  IIMAFakeFrameParentWindow *parent = [IIMAFakeFrameParentWindow new];
+  parent.frame = NSMakeRect(50, 60, 640, 360);
+  parent.visible = YES;
+  parent.number = 74;
+  parent.styleMask = NSWindowStyleMaskTitled | NSWindowStyleMaskResizable;
+  IIMAFakeFrameVideoWindow *video = [IIMAFakeFrameVideoWindow new];
+  video.frame = parent.frame;
+  IIMAFakeFrameVideoView *view = [IIMAFakeFrameVideoView new];
+  view.fakeContext = [IIMAFakeFrameOpenGLContext new];
+  IIMAInstallFakeSession(session, parent, video, view);
+  iima_native_video_observe_parent_window(session);
+
+  [[NSNotificationCenter defaultCenter]
+    postNotificationName:NSWindowWillStartLiveResizeNotification
+                  object:parent];
+
+  // AppKit keeps the main thread in NSEventTrackingRunLoopMode while the resize button remains
+  // held. The production dispatch_async(main) fast path must therefore advance in that mode, not
+  // only after AppKit returns to NSDefaultRunLoopMode when the mouse is released.
+  parent.frame = NSMakeRect(50, 60, 800, 450);
+  [[NSNotificationCenter defaultCenter]
+    postNotificationName:NSWindowDidResizeNotification
+                  object:parent];
+  IIMARequire(video.setFrameCalls == 0,
+              @"event-tracking resize mutated the child on the notification stack");
+  IIMAPumpEventTrackingMainQueue(0.02);
+  IIMARequire(video.setFrameCalls == 1,
+              @"live child update did not execute in NSEventTrackingRunLoopMode");
+  IIMARequire(NSEqualRects(video.frame, parent.frame),
+              @"event-tracking live update did not apply the held-drag frame");
+  IIMARequire(view.renderRequests == 1,
+              @"event-tracking live update did not request a paint");
+
+  parent.frame = NSMakeRect(50, 60, 960, 540);
+  [[NSNotificationCenter defaultCenter]
+    postNotificationName:NSWindowDidResizeNotification
+                  object:parent];
+  IIMAPumpEventTrackingMainQueue(0.02);
+  IIMARequire(video.setFrameCalls == 2,
+              @"second held-drag turn did not advance in event-tracking mode");
+  IIMARequire(NSEqualRects(video.frame, parent.frame),
+              @"second event-tracking turn did not apply the latest frame");
+  IIMARequire(view.renderRequests == 2,
+              @"second event-tracking turn did not request a paint");
+
+  [[NSNotificationCenter defaultCenter]
+    postNotificationName:NSWindowDidEndLiveResizeNotification
+                  object:parent];
+  IIMAPumpMainQueue(0.02);
+  IIMARequire(view.fakeContext.updateCalls == 1,
+              @"event-tracking resize did not finalize the OpenGL surface");
+  IIMARequire(view.renderRequests == 3,
+              @"event-tracking resize did not request the final paint");
+  IIMARemoveFakeSession(session);
+}
+
+static void IIMATestLiveResizeGenerationRejectsReinstalledSessionABA(void) {
+  NSString *session = @"live-resize-aba";
+  IIMAFakeFrameParentWindow *oldParent = [IIMAFakeFrameParentWindow new];
+  oldParent.frame = NSMakeRect(10, 20, 640, 360);
+  IIMAFakeFrameVideoWindow *oldVideo = [IIMAFakeFrameVideoWindow new];
+  oldVideo.frame = oldParent.frame;
+  IIMAFakeFrameVideoView *oldView = [IIMAFakeFrameVideoView new];
+  oldView.fakeContext = [IIMAFakeFrameOpenGLContext new];
+  IIMAInstallFakeSession(session, oldParent, oldVideo, oldView);
+
+  // Queue a live update for the old session, then remove and reinstall the same label before the
+  // main queue can execute it. A membership-only token lets this stale block consume the new
+  // session's token and mutate its window; the generation must distinguish the two lifetimes.
+  iima_native_video_begin_live_resize(session);
+  NSNumber *oldGeneration = iima_native_video_live_frame_update_generations[session];
+  IIMARequire(oldGeneration != nil, @"old live-resize session did not install a generation");
+  IIMARemoveFakeSession(session);
+  IIMARequire(iima_native_video_live_frame_update_generations[session] == nil,
+              @"fake-session removal retained the old live generation");
+
+  IIMAFakeFrameParentWindow *newParent = [IIMAFakeFrameParentWindow new];
+  newParent.frame = NSMakeRect(30, 40, 960, 540);
+  IIMAFakeFrameVideoWindow *newVideo = [IIMAFakeFrameVideoWindow new];
+  newVideo.frame = NSMakeRect(0, 0, 320, 180);
+  IIMAFakeFrameVideoView *newView = [IIMAFakeFrameVideoView new];
+  newView.fakeContext = [IIMAFakeFrameOpenGLContext new];
+  IIMAInstallFakeSession(session, newParent, newVideo, newView);
+
+  __block NSUInteger callsObservedBetweenQueuedBlocks = NSUIntegerMax;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    callsObservedBetweenQueuedBlocks = newVideo.setFrameCalls;
+  });
+  iima_native_video_begin_live_resize(session);
+  NSNumber *newGeneration = iima_native_video_live_frame_update_generations[session];
+  IIMARequire(newGeneration != nil, @"reinstalled live-resize session did not install a generation");
+  IIMARequire(![newGeneration isEqualToNumber:oldGeneration],
+              @"reinstalled live-resize session reused the stale generation");
+
+  IIMAPumpMainQueue(0.02);
+  IIMARequire(callsObservedBetweenQueuedBlocks == 0,
+              @"stale queued block consumed the reinstalled session's live token");
+  IIMARequire(newVideo.setFrameCalls == 1,
+              @"reinstalled session's own live block did not execute exactly once");
+  IIMARequire(NSEqualRects(newVideo.frame, newParent.frame),
+              @"reinstalled session's live block did not apply its parent frame");
+  IIMARequire(newView.renderRequests == 1,
+              @"reinstalled session's live block did not request exactly one paint");
+  IIMARequire(iima_native_video_live_frame_update_generations[session] == nil,
+              @"completed reinstalled-session update retained its generation");
+  IIMARequire(![iima_native_video_live_frame_updates containsObject:session],
+              @"completed reinstalled-session update retained its membership token");
   IIMARemoveFakeSession(session);
 }
 
@@ -391,10 +611,17 @@ static void IIMATestSessionRemovalCancelsPendingFrameWork(void) {
   updateView.fakeContext = [IIMAFakeFrameOpenGLContext new];
   IIMAInstallFakeSession(updateSession, updateParent, updateVideo, updateView);
 
+  iima_native_video_begin_live_resize(updateSession);
   iima_native_video_schedule_window_frame_update(updateSession);
   IIMARequire(iima_native_video_frame_update_generations[updateSession] != nil, @"cleanup update was not pending");
+  IIMARequire(iima_native_video_live_frame_update_generations[updateSession] != nil,
+              @"cleanup live update did not own a generation");
   iima_native_video_remove_session("cleanup-update");
   IIMARequire(iima_native_video_frame_update_generations[updateSession] == nil, @"session removal retained pending update");
+  IIMARequire(iima_native_video_live_frame_update_generations[updateSession] == nil,
+              @"session removal retained pending live generation");
+  IIMARequire(![iima_native_video_live_frame_updates containsObject:updateSession], @"session removal retained pending live update");
+  IIMARequire(![iima_native_video_live_resize_sessions containsObject:updateSession], @"session removal retained live-resize state");
   IIMARequire(![iima_native_video_force_surface_updates containsObject:updateSession], @"session removal retained force-refresh state");
   IIMARequire(iima_native_video_frame_retry_attempts[updateSession] == nil, @"session removal retained retry state");
   IIMARequire(updateView.detachCalls == 1 && updateView.removalCalls == 1, @"session removal did not clean fake view");
@@ -416,6 +643,10 @@ static void IIMATestSessionRemovalCancelsPendingFrameWork(void) {
   iima_native_video_remove_session("cleanup-retry");
   IIMARequire(iima_native_video_frame_retry_attempts[retrySession] == nil, @"session removal retained delayed retry");
   IIMARequire(iima_native_video_frame_update_generations[retrySession] == nil, @"session removal retained update state");
+  IIMARequire(iima_native_video_live_frame_update_generations[retrySession] == nil,
+              @"session removal retained live generation state");
+  IIMARequire(![iima_native_video_live_frame_updates containsObject:retrySession], @"session removal retained pending live update");
+  IIMARequire(![iima_native_video_live_resize_sessions containsObject:retrySession], @"session removal retained live-resize state");
   IIMARequire(![iima_native_video_force_surface_updates containsObject:retrySession], @"session removal retained force-refresh state");
   IIMAPumpMainQueue(0.15);
   IIMARequire(retryVideo.setFrameCalls == 1, @"cancelled delayed retry ran after session removal");
@@ -425,12 +656,16 @@ int main(void) {
   @autoreleasepool {
     iima_native_video_ensure_sessions();
     IIMATestChildWindowShapeTracksParentPresentation();
-    IIMATestNotificationBurstRestartsQuietPeriod();
+    IIMATestLiveResizeTracksEveryMainQueueTurnAndFinalizes();
+    IIMATestLiveResizeTracksInsideEventTrackingMode();
+    IIMATestLiveResizeGenerationRejectsReinstalledSessionABA();
     IIMATestExceptionIsCaughtAndRetried();
+    IIMATestLiveResizeExceptionFallsBackToBoundedRetry();
+    IIMATestPersistentLiveResizeExceptionPreservesBackoff();
     IIMATestPartialFrameCommitRefreshesOpenGLSurface();
     IIMATestPersistentExceptionIsBounded();
     IIMATestSessionRemovalCancelsPendingFrameWork();
-    printf("native video frame exception harness: 6 scenarios passed\n");
+    printf("native video frame exception/live-resize harness: 10 scenarios passed\n");
   }
   return 0;
 }

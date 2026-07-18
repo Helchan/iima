@@ -160,5 +160,10 @@ const frontendSource = readFileSync(new URL("../src/main.js", import.meta.url), 
 assert.match(frontendSource, /function pluginMpvKeyFromEvent\(event\) \{\s*return mpvKeyTokenFromKeyboardEvent\(event\);/u);
 assert.match(frontendSource, /function eventKeyToken\(event\) \{\s*return mpvKeyTokenFromKeyboardEvent\(event\);/u);
 assert.match(frontendSource, /els\.filterEditorShortcut\.value = macOSReadableKeyboardEvent\(event\);/u);
+assert.match(
+  frontendSource,
+  /"Movist Default"[\s\S]*?RIGHT seek 10\\nLEFT seek -10\\n/,
+  "the browser mock must preserve Movist's configurable ten-second seek bindings",
+);
 
 console.log("key-mapping tests passed");

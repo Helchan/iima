@@ -23,6 +23,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Test configurable key actions and native input routing
+        run: npm run key-actions:test && npm run native-input:test
+
       - name: Validate release tag
         id: package
         shell: bash
@@ -99,6 +102,9 @@ jobs:
 
       - name: Prepare pinned IINA and Sparkle packaging inputs
         run: bash scripts/prepare-macos-ci.sh
+
+      - name: Verify bundled key binding profiles
+        run: npm run keybindings:test
 
       - name: Fetch Rust dependencies
         run: cargo fetch --locked --manifest-path src-tauri/Cargo.toml

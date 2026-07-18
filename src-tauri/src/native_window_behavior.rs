@@ -50,6 +50,57 @@ pub enum NativePlayerInputEvent {
         magnification: f64,
         phase: u64,
     },
+    MouseMove {
+        x: f64,
+        y: f64,
+    },
+    KeyDown {
+        key_code: i32,
+        modifiers: u64,
+        repeat: bool,
+    },
+}
+
+#[allow(clippy::too_many_arguments)]
+fn decode_native_player_input(
+    kind: i32,
+    x: f64,
+    y: f64,
+    delta_x: f64,
+    delta_y: f64,
+    precise: i32,
+    natural: i32,
+    phase: u64,
+    momentum_phase: u64,
+    stage: i32,
+    magnification: f64,
+) -> Option<NativePlayerInputEvent> {
+    match kind {
+        1 => Some(NativePlayerInputEvent::Scroll {
+            x,
+            y,
+            delta_x,
+            delta_y,
+            precise: precise != 0,
+            natural: natural != 0,
+            phase,
+            momentum_phase,
+        }),
+        2 => Some(NativePlayerInputEvent::Pressure { x, y, stage }),
+        3 => Some(NativePlayerInputEvent::Magnify {
+            x,
+            y,
+            magnification,
+            phase,
+        }),
+        4 => Some(NativePlayerInputEvent::MouseMove { x, y }),
+        5 => Some(NativePlayerInputEvent::KeyDown {
+            key_code: stage,
+            modifiers: phase,
+            repeat: precise != 0,
+        }),
+        _ => None,
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -60,8 +111,8 @@ mod imp {
     use tauri::{AppHandle, Emitter, Runtime};
 
     use super::{
-        BatteryStatus, NativeMiniPlayerLayout, NativeMiniPlayerLayoutEvent, NativePlayerInputEvent,
-        NATIVE_MINI_PLAYER_LAYOUT_EVENT, NATIVE_PLAYER_INPUT_EVENT,
+        decode_native_player_input, BatteryStatus, NativeMiniPlayerLayout,
+        NativeMiniPlayerLayoutEvent, NATIVE_MINI_PLAYER_LAYOUT_EVENT, NATIVE_PLAYER_INPUT_EVENT,
     };
 
     unsafe extern "C" {
@@ -76,6 +127,11 @@ mod imp {
             window: *mut c_void,
             visible: c_int,
             animated: c_int,
+        ) -> c_int;
+        fn iima_native_set_player_window_aspect_ratio(
+            window: *mut c_void,
+            width: f64,
+            height: f64,
         ) -> c_int;
         fn iima_native_set_window_theme(window: *mut c_void, theme: c_int);
         fn iima_native_window_is_legacy_fullscreen(window: *mut c_void) -> c_int;
@@ -192,25 +248,20 @@ mod imp {
         let Some(app) = APP_HANDLE.get() else {
             return;
         };
-        let event = match kind {
-            1 => NativePlayerInputEvent::Scroll {
-                x,
-                y,
-                delta_x,
-                delta_y,
-                precise: precise != 0,
-                natural: natural != 0,
-                phase,
-                momentum_phase,
-            },
-            2 => NativePlayerInputEvent::Pressure { x, y, stage },
-            3 => NativePlayerInputEvent::Magnify {
-                x,
-                y,
-                magnification,
-                phase,
-            },
-            _ => return,
+        let Some(event) = decode_native_player_input(
+            kind,
+            x,
+            y,
+            delta_x,
+            delta_y,
+            precise,
+            natural,
+            phase,
+            momentum_phase,
+            stage,
+            magnification,
+        ) else {
+            return;
         };
         let _ = app.emit_to(label, NATIVE_PLAYER_INPUT_EVENT, event);
     }
@@ -320,6 +371,25 @@ mod imp {
             0 => Ok(()),
             value => Err(format!(
                 "failed to synchronize native player window chrome ({value})"
+            )),
+        }
+    }
+
+    pub fn set_player_window_aspect_ratio(
+        window: *mut c_void,
+        video_size: Option<(f64, f64)>,
+    ) -> Result<(), String> {
+        let window = require_window(window)?;
+        let (width, height) = video_size
+            .filter(|(width, height)| {
+                width.is_finite() && height.is_finite() && *width > 0.0 && *height > 0.0
+            })
+            .unwrap_or((0.0, 0.0));
+        let status = unsafe { iima_native_set_player_window_aspect_ratio(window, width, height) };
+        match status {
+            0 => Ok(()),
+            value => Err(format!(
+                "failed to synchronize native player window aspect ratio ({value})"
             )),
         }
     }
@@ -546,6 +616,13 @@ mod imp {
         Ok(())
     }
 
+    pub fn set_player_window_aspect_ratio(
+        _window: *mut c_void,
+        _video_size: Option<(f64, f64)>,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
     pub fn is_legacy_fullscreen(_window: *mut c_void) -> bool {
         false
     }
@@ -620,6 +697,102 @@ pub use imp::*;
 #[cfg(test)]
 mod tests {
     #[test]
+    fn player_input_abi_decodes_mouse_move_and_key_down_without_overloading_coordinates() {
+        let mouse_move =
+            super::decode_native_player_input(4, 124.5, 88.25, 9.0, 10.0, 1, 1, 2, 3, 53, 4.0)
+                .expect("mouse-move ABI event");
+        assert_eq!(
+            serde_json::to_value(&mouse_move).unwrap(),
+            serde_json::json!({ "kind": "mouse-move", "x": 124.5, "y": 88.25 })
+        );
+        match mouse_move {
+            super::NativePlayerInputEvent::MouseMove { x, y } => {
+                assert_eq!((x, y), (124.5, 88.25));
+            }
+            event => panic!("unexpected mouse-move ABI event: {event:?}"),
+        }
+
+        let key_down =
+            super::decode_native_player_input(5, 300.0, 200.0, 0.0, 0.0, 1, 0, 1 << 20, 0, 53, 0.0)
+                .expect("key-down ABI event");
+        assert_eq!(
+            serde_json::to_value(&key_down).unwrap(),
+            serde_json::json!({
+                "kind": "key-down",
+                "key_code": 53,
+                "modifiers": 1 << 20,
+                "repeat": true
+            })
+        );
+        match key_down {
+            super::NativePlayerInputEvent::KeyDown {
+                key_code,
+                modifiers,
+                repeat,
+            } => {
+                assert_eq!(key_code, 53);
+                assert_eq!(modifiers, 1 << 20);
+                assert!(repeat);
+            }
+            event => panic!("unexpected key-down ABI event: {event:?}"),
+        }
+
+        assert!(
+            super::decode_native_player_input(99, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0, 0.0,)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn native_player_input_monitor_delivers_motion_and_guarantees_escape_once() {
+        let source = include_str!("native_window.m");
+        for contract in [
+            "case NSEventTypeMouseMoved:",
+            "kind = 4;",
+            "case NSEventTypeKeyDown:",
+            "kind = 5;",
+            "precise = event.isARepeat ? 1 : 0;",
+            "stage = (int)event.keyCode;",
+            "event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask",
+            "window.acceptsMouseMovedEvents = YES;",
+            "NSEventMaskMouseMoved |",
+            "NSEventMaskKeyDown;",
+            "if (event.type == NSEventTypeKeyDown && event.keyCode == 53) return nil;",
+        ] {
+            assert!(
+                source.contains(contract),
+                "missing native input contract: {contract}"
+            );
+        }
+    }
+
+    #[test]
+    fn player_window_aspect_ratio_contract_is_main_thread_safe_and_clearable() {
+        let source = include_str!("native_window.m");
+        let setter = source
+            .split_once("int iima_native_set_player_window_aspect_ratio")
+            .expect("native player aspect ratio setter")
+            .1
+            .split_once("int iima_native_set_player_window_frame")
+            .expect("bounded native player aspect ratio setter")
+            .0;
+        for contract in [
+            "if (windowPointer == NULL) return -1;",
+            "IIMARunOnMainQueueSync(^{",
+            "isfinite(width) && isfinite(height) && width > 0 && height > 0",
+            "NSSize targetAspect = hasValidAspect ? NSMakeSize(width, height) : NSZeroSize;",
+            "fabs(currentProduct - targetProduct) <= comparisonScale * 1e-9",
+            "if (!hasSameAspect)",
+            "window.aspectRatio = targetAspect;",
+        ] {
+            assert!(
+                setter.contains(contract),
+                "missing aspect contract: {contract}"
+            );
+        }
+    }
+
+    #[test]
     fn native_contract_uses_real_appkit_window_and_sleep_surfaces() {
         let source = include_str!("native_window.m");
         for contract in [
@@ -633,6 +806,9 @@ mod tests {
             "iima_native_configure_player_presentation",
             "iima_native_sync_player_window_title",
             "iima_native_set_player_window_chrome_visible",
+            "iima_native_set_player_window_aspect_ratio",
+            "IIMARunOnMainQueueSync(^{",
+            "window.aspectRatio = targetAspect;",
             "window.releasedWhenClosed = NO;",
             "IINAWelcomeWindow",
             "window.representedURL = representedURL;",
@@ -657,7 +833,9 @@ mod tests {
             "NSEventMaskLeftMouseUp |",
             "NSEventMaskScrollWheel |",
             "NSEventMaskPressure |",
-            "NSEventMaskMagnify;",
+            "NSEventMaskMagnify |",
+            "NSEventMaskMouseMoved |",
+            "NSEventMaskKeyDown;",
             "event.hasPreciseScrollingDeltas",
             "event.isDirectionInvertedFromDevice",
             "NSWindowWillStartLiveResizeNotification",

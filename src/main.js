@@ -140,6 +140,12 @@ import {
   normalizePluginEventName,
   pluginChangedMpvProperty,
 } from "./plugin-events.js";
+import { classifyMpvKeyAction } from "./mpv-key-action.js";
+import {
+  nativeEscapeKeyboardEventInit,
+  nativePlayerMousePoint,
+  shouldExitFullscreenForUnboundEscape,
+} from "./native-player-input.js";
 import { isMacOSHost } from "./platform.js";
 
 const runningOnMacOS = isMacOSHost({
@@ -645,7 +651,7 @@ const mockKeyBindingProfiles = new Map([
       kind: "builtin",
       readOnly: true,
       path: null,
-      contents: "# Movist-style bindings\nSPACE cycle pause\nRIGHT seek 5\nLEFT seek -5\n",
+      contents: "# Movist-style bindings\nSPACE cycle pause\nRIGHT seek 10\nLEFT seek -10\n",
     },
   ],
 ]);
@@ -1328,41 +1334,31 @@ function removeMockFilter(kind, index) {
   mockState.osd_message = "Removed Filter";
 }
 
-function mockPlayerCommandForKeyBinding(rawAction) {
-  const parts = String(rawAction ?? "").trim().split(/\s+/).filter(Boolean);
-  if (parts[0] === "{default}") parts.shift();
-  const [verb, property, value] = parts;
-  if (verb === "cycle" && property === "pause") return { type: "toggle-pause" };
-  if (verb === "cycle" && property === "mute") return { type: "toggle-mute" };
-  if (verb === "seek" && Number.isFinite(Number(property))) {
-    return { type: "seek", seconds: (Number(mockState.position_seconds) || 0) + Number(property) };
+function applyMockMpvKeyAction(rawAction) {
+  const action = classifyMpvKeyAction(rawAction);
+  if (action.type === "player") {
+    applyMockCommand(action.command);
+  } else if (action.type === "seek-relative") {
+    applyMockCommand({ type: "seek-relative", seconds: action.seconds, option: action.option });
+  } else if (action.type === "volume-relative") {
+    applyMockCommand({ type: "volume-relative", amount: action.amount });
+  } else if (action.type === "fullscreen-toggle") {
+    mockState.window_fullscreen = !Boolean(mockState.window_fullscreen);
+    mockState.osd_message = mockState.window_fullscreen ? "Full Screen" : "Exit Full Screen";
+  } else if (action.type === "fullscreen-set") {
+    mockState.window_fullscreen = action.fullscreen;
+    mockState.osd_message = mockState.window_fullscreen ? "Full Screen" : "Exit Full Screen";
+  } else if (action.type === "screenshot") {
+    mockState.osd_message = "Screenshot Captured";
+  } else {
+    mockState.osd_message = String(action.action || "Key Binding");
   }
-  if (verb === "add" && property === "volume" && Number.isFinite(Number(value))) {
-    return { type: "set-volume", volume: (Number(mockState.volume) || 0) + Number(value) };
-  }
-  if (verb === "multiply" && property === "speed" && Number.isFinite(Number(value))) {
-    return { type: "multiply-speed", factor: Number(value) };
-  }
-  if (verb === "set" && property === "speed" && Number.isFinite(Number(value))) {
-    return { type: "set-speed", speed: Number(value) };
-  }
-  if (verb === "frame-step") return { type: "frame-step", backwards: false };
-  if (verb === "frame-back-step") return { type: "frame-step", backwards: true };
-  if (verb === "playlist-next") return { type: "playlist-next" };
-  if (verb === "playlist-prev") return { type: "playlist-prev" };
-  if (verb === "ab-loop") return { type: "cycle-ab-loop" };
-  if (verb === "stop" || verb === "quit") return { type: "stop" };
-  if (verb === "cycle" && ["video", "audio", "sub"].includes(property)) {
-    return { type: "cycle-track", kind: property === "sub" ? "subtitles" : property };
-  }
-  return null;
+  syncMockMpvProperties();
 }
 
 function applyMockCommand(command) {
   if (command.type === "key-binding-mpv-command") {
-    const mapped = mockPlayerCommandForKeyBinding(command.action);
-    if (mapped) applyMockCommand(mapped);
-    else mockState.osd_message = String(command.action || "Key Binding");
+    applyMockMpvKeyAction(command.action);
     return;
   }
   if (command.type === "toggle-pause") {
@@ -1371,6 +1367,13 @@ function applyMockCommand(command) {
   }
   if (command.type === "set-volume") {
     mockState.volume = Math.max(0, Math.min(200, command.volume));
+    mockState.osd_message = `Volume ${Math.round(mockState.volume)}%`;
+  }
+  if (command.type === "volume-relative") {
+    mockState.volume = Math.max(
+      0,
+      Math.min(200, (Number(mockState.volume) || 0) + (Number(command.amount) || 0)),
+    );
     mockState.osd_message = `Volume ${Math.round(mockState.volume)}%`;
   }
   if (command.type === "set-speed") {
@@ -2004,7 +2007,14 @@ let selectedSavedFilterIndex = -1;
 let selectedFilterPresetId = null;
 let filterEditorContext = null;
 let filterEditorShortcut = { key: "", modifiers: "" };
-let nativeVideoRenderer = await invoke("get_native_video_renderer_status");
+let nativeVideoRenderer = null;
+if (!isAuxiliaryWindow) {
+  try {
+    nativeVideoRenderer = await invoke("get_native_video_renderer_status");
+  } catch (error) {
+    console.error("Unable to inspect the native video renderer", error);
+  }
+}
 let pipOverlayClosing = false;
 let stateEpoch = 0;
 let renderedStateFingerprint = "";
@@ -2046,6 +2056,9 @@ let miniLayoutQueued = false;
 let miniPlaylistResizeTimer;
 const nativeScrollGesture = new IinaScrollGestureState();
 let nativeInputCommandQueue = Promise.resolve();
+let keyBindingExecutionQueue = Promise.resolve();
+let nativeMouseMoveFrame;
+let pendingNativeMouseMove;
 let forceTouchSecondStage = false;
 let magnifyFullscreenHandled = false;
 let surfaceWindowDragState;
@@ -2276,7 +2289,9 @@ document.querySelectorAll("[data-sidebar-tab]").forEach((button) => {
   });
 });
 
-window.addEventListener("keydown", (event) => {
+window.addEventListener("keydown", handleWindowKeyDown);
+
+function handleWindowKeyDown(event) {
   if (event.key === "Escape" && customCropEditor) {
     event.preventDefault();
     closeCustomCropEditor();
@@ -2375,8 +2390,15 @@ window.addEventListener("keydown", (event) => {
       return false;
     },
   );
-  if (handled) event.preventDefault();
-});
+  if (handled) {
+    event.preventDefault();
+    return;
+  }
+  if (shouldExitFullscreenForUnboundEscape(event, handled, windowFullscreenActive)) {
+    event.preventDefault();
+    void setFullscreenFromShortcut(false);
+  }
+}
 
 window.addEventListener("keyup", (event) => {
   if (isTypingTarget(event.target)) return;
@@ -6067,14 +6089,18 @@ function finishOscDrag(event) {
   ]).then(() => render(state));
 }
 
-function handlePlayerPointerMovement(event) {
+function handlePlayerPointerMovementForTarget(target) {
   setSurfaceCursorHidden(false);
   void setSurfaceOscVisible(true);
-  if (isOscAutoHideSuspendedTarget(event.target)) {
+  if (isOscAutoHideSuspendedTarget(target)) {
     clearTimeout(surfaceOscHideTimer);
   } else {
     scheduleSurfaceOscHide();
   }
+}
+
+function handlePlayerPointerMovement(event) {
+  handlePlayerPointerMovementForTarget(event.target);
 }
 
 function handlePlayerPointerLeave() {
@@ -6126,7 +6152,16 @@ function handleSurfaceWheel(event) {
 }
 
 function handleNativePlayerInput(payload) {
-  if (!payload || state.mode === "initial") return;
+  if (!payload) return;
+  if (payload.kind === "key-down") {
+    dispatchNativePlayerKeyDown(payload);
+    return;
+  }
+  if (state.mode === "initial") return;
+  if (payload.kind === "mouse-move") {
+    scheduleNativePlayerMouseMove(payload);
+    return;
+  }
   const target = document.elementFromPoint(Number(payload.x) || 0, Number(payload.y) || 0);
   if (payload.kind === "scroll") {
     routeScrollInput(payload, target);
@@ -6135,6 +6170,28 @@ function handleNativePlayerInput(payload) {
   } else if (payload.kind === "magnify") {
     handleNativeMagnifyInput(payload, target);
   }
+}
+
+function dispatchNativePlayerKeyDown(payload) {
+  const init = nativeEscapeKeyboardEventInit(payload);
+  if (!init) return;
+  const target = document.activeElement instanceof Element ? document.activeElement : window;
+  target.dispatchEvent(new KeyboardEvent("keydown", init));
+}
+
+function scheduleNativePlayerMouseMove(payload) {
+  const point = nativePlayerMousePoint(payload);
+  if (!point) return;
+  pendingNativeMouseMove = point;
+  if (nativeMouseMoveFrame !== undefined) return;
+  nativeMouseMoveFrame = requestAnimationFrame(() => {
+    nativeMouseMoveFrame = undefined;
+    const nextPoint = pendingNativeMouseMove;
+    pendingNativeMouseMove = undefined;
+    if (!nextPoint) return;
+    const target = document.elementFromPoint(nextPoint.x, nextPoint.y);
+    handlePlayerPointerMovementForTarget(target);
+  });
 }
 
 function routeScrollInput(payload, target) {
@@ -6433,7 +6490,7 @@ function isExecutableKeyBindingRow(row) {
 function inputActionToRuntimeAction(rawAction, isIINACommand, runtimeEligible = true, inactiveReason = null) {
   const action = String(rawAction ?? "").trim();
   if (!runtimeEligible) return { type: "inactive", rawAction: action, reason: inactiveReason };
-  if (!isIINACommand) return { type: "mpv-command", action };
+  if (!isIINACommand) return classifyMpvKeyAction(action);
   return iinaPrivateActionToRuntimeAction(action.split(/\s+/).filter(Boolean), action);
 }
 
@@ -6530,7 +6587,10 @@ function actionRawValue(action) {
   if (action.type === "inactive") return action.rawAction;
   if (action.type === "music-mode") return "#@iina toggle-music-mode";
   if (action.type === "picture-in-picture") return "#@iina toggle-pip";
-  if (action.type === "seek-relative") return `seek ${action.seconds}`;
+  if (action.type === "seek-relative") {
+    const option = action.option ?? "auto";
+    return `seek ${action.seconds}${option === "auto" ? "" : ` ${option}`}`;
+  }
   if (action.type === "volume-relative") return `add volume ${action.amount}`;
   if (action.type === "screenshot") return "screenshot";
   if (action.type === "fullscreen-toggle") return "cycle fullscreen";
@@ -6610,7 +6670,7 @@ function handlePlayerShortcut(event) {
   }
 
   event.preventDefault();
-  void executeKeyBinding(binding);
+  enqueueKeyBindingExecution(binding);
   return true;
 }
 
@@ -6623,6 +6683,13 @@ function eventKeyToken(event) {
   return mpvKeyTokenFromKeyboardEvent(event);
 }
 
+function enqueueKeyBindingExecution(binding) {
+  keyBindingExecutionQueue = keyBindingExecutionQueue
+    .then(() => executeKeyBinding(binding))
+    .catch((error) => console.error("Key binding execution failed", error));
+  return keyBindingExecutionQueue;
+}
+
 async function executeKeyBinding(binding) {
   const action = binding.action;
   if (action.type === "iina-command") {
@@ -6632,7 +6699,7 @@ async function executeKeyBinding(binding) {
   } else if (action.type === "player") {
     await command(action.command);
   } else if (action.type === "seek-relative") {
-    await command({ type: "seek", seconds: (Number(state.position_seconds) || 0) + action.seconds });
+    await command({ type: "seek-relative", seconds: action.seconds, option: action.option });
   } else if (action.type === "volume-relative") {
     await command({ type: "set-volume", volume: (Number(state.volume) || 0) + action.amount });
   } else if (action.type === "sidebar") {

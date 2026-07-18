@@ -339,6 +339,10 @@ static NSMutableDictionary<NSString *, NSWindow *> *iima_native_video_windows = 
 static NSMutableDictionary<NSString *, NSArray<id> *> *iima_native_video_window_observers = nil;
 static NSMutableDictionary<NSString *, NSNumber *> *iima_native_video_frame_retry_attempts = nil;
 static NSMutableDictionary<NSString *, NSNumber *> *iima_native_video_frame_update_generations = nil;
+static NSMutableDictionary<NSString *, NSNumber *> *iima_native_video_live_frame_update_generations = nil;
+static NSMutableSet<NSString *> *iima_native_video_live_frame_updates = nil;
+static NSMutableSet<NSString *> *iima_native_video_live_resize_sessions = nil;
+static NSMutableSet<NSString *> *iima_native_video_suspended_live_frame_updates = nil;
 static NSMutableSet<NSString *> *iima_native_video_force_surface_updates = nil;
 static atomic_bool iima_native_video_sessions_initialized = ATOMIC_VAR_INIT(false);
 static uint64_t iima_native_video_frame_update_generation = 0;
@@ -388,6 +392,10 @@ static void iima_native_video_ensure_sessions(void) {
     iima_native_video_window_observers = [[NSMutableDictionary alloc] init];
     iima_native_video_frame_retry_attempts = [[NSMutableDictionary alloc] init];
     iima_native_video_frame_update_generations = [[NSMutableDictionary alloc] init];
+    iima_native_video_live_frame_update_generations = [[NSMutableDictionary alloc] init];
+    iima_native_video_live_frame_updates = [[NSMutableSet alloc] init];
+    iima_native_video_live_resize_sessions = [[NSMutableSet alloc] init];
+    iima_native_video_suspended_live_frame_updates = [[NSMutableSet alloc] init];
     iima_native_video_force_surface_updates = [[NSMutableSet alloc] init];
     atomic_store(&iima_native_video_sessions_initialized, true);
   }
@@ -524,6 +532,36 @@ static BOOL iima_native_video_apply_window_frame(NSString *session, BOOL forceSu
   }
 }
 
+static BOOL iima_native_video_apply_live_window_frame(NSString *session) {
+  iima_native_video_assert_main_thread();
+  NSView *host = iima_native_video_hosts[session];
+  NSWindow *parent = host.window;
+  NSWindow *videoWindow = iima_native_video_windows[session];
+  if (parent == nil || videoWindow == nil) {
+    return YES;
+  }
+
+  @try {
+    NSRect targetFrame = parent.frame;
+    IIMANativeVideoView *view = iima_native_video_views[session];
+    if (!NSEqualRects(videoWindow.frame, targetFrame)) {
+      // Live resize must follow every AppKit event. Restrict the hot path to geometry and render
+      // invalidation; shape, shadow, hierarchy, and OpenGL recovery work are finalized once the
+      // resize session ends.
+      [videoWindow setFrame:targetFrame display:NO];
+      [view requestRender];
+    }
+    return YES;
+  } @catch (NSException *exception) {
+    NSLog(
+      @"IIMA native video live frame update deferred after %@: %@",
+      exception.name,
+      exception.reason ?: @"unknown AppKit exception"
+    );
+    return NO;
+  }
+}
+
 static void iima_native_video_schedule_window_frame_retry(NSString *session, NSUInteger attempt) {
   iima_native_video_assert_main_thread();
   static const NSUInteger maxAttempts = 3;
@@ -548,6 +586,12 @@ static void iima_native_video_schedule_window_frame_retry(NSString *session, NSU
         if (attempt < maxAttempts) {
           iima_native_video_schedule_window_frame_retry(sessionKey, attempt + 1);
         } else {
+          if ([iima_native_video_live_resize_sessions containsObject:sessionKey]) {
+            // A persistent WindowServer failure must not restart a fresh retry ladder on every
+            // subsequent mouse event. Suspend the fast path for the rest of this live-resize
+            // session; DidEndLiveResize performs one final bounded reconciliation.
+            [iima_native_video_suspended_live_frame_updates addObject:sessionKey];
+          }
           NSLog(
             @"IIMA native video frame update abandoned after %lu retries for session %@",
             (unsigned long)maxAttempts,
@@ -570,6 +614,96 @@ static void iima_native_video_update_window_frame(NSString *session) {
   if (!iima_native_video_apply_window_frame(session, NO)) {
     iima_native_video_schedule_window_frame_retry(session, 1);
   }
+}
+
+static void iima_native_video_cancel_delayed_frame_updates(
+  NSString *session,
+  BOOL preserveSurfaceRefresh
+) {
+  iima_native_video_assert_main_thread();
+  [iima_native_video_frame_update_generations removeObjectForKey:session];
+  if (iima_native_video_frame_retry_attempts[session] != nil) {
+    [iima_native_video_frame_retry_attempts removeObjectForKey:session];
+    if (preserveSurfaceRefresh) {
+      [iima_native_video_force_surface_updates addObject:session];
+    }
+  }
+}
+
+static void iima_native_video_schedule_live_window_frame_update(NSString *session) {
+  iima_native_video_assert_main_thread();
+  NSString *sessionKey = [session copy];
+  // A live-resize event supersedes only the trailing quiet-period generation. If an exception
+  // recovery is already pending, let its 50/100/200 ms backoff run against the newest parent
+  // frame instead of resetting attempt one at mouse-event frequency.
+  [iima_native_video_frame_update_generations removeObjectForKey:sessionKey];
+  if (iima_native_video_frame_retry_attempts[sessionKey] != nil
+      || [iima_native_video_suspended_live_frame_updates containsObject:sessionKey]
+      || [iima_native_video_live_frame_updates containsObject:sessionKey]) {
+    return;
+  }
+
+  // Coalesce duplicate notifications from the same AppKit turn, but never wait for the mouse to
+  // stop. The next main-queue turn observes the newest parent frame and keeps the child surface
+  // visually attached throughout the drag.
+  uint64_t generation = iima_native_video_next_frame_update_generation();
+  iima_native_video_live_frame_update_generations[sessionKey] = @(generation);
+  [iima_native_video_live_frame_updates addObject:sessionKey];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    NSNumber *pendingGeneration =
+      iima_native_video_live_frame_update_generations[sessionKey];
+    if (pendingGeneration == nil || pendingGeneration.unsignedLongLongValue != generation) {
+      return;
+    }
+    [iima_native_video_live_frame_update_generations removeObjectForKey:sessionKey];
+    [iima_native_video_live_frame_updates removeObject:sessionKey];
+    if (![iima_native_video_live_resize_sessions containsObject:sessionKey]) {
+      return;
+    }
+    if (!iima_native_video_apply_live_window_frame(sessionKey)) {
+      [iima_native_video_force_surface_updates addObject:sessionKey];
+      iima_native_video_schedule_window_frame_retry(sessionKey, 1);
+    }
+  });
+}
+
+static void iima_native_video_schedule_final_window_frame_update(NSString *session) {
+  iima_native_video_assert_main_thread();
+  NSString *sessionKey = [session copy];
+  iima_native_video_cancel_delayed_frame_updates(sessionKey, YES);
+  uint64_t generation = iima_native_video_next_frame_update_generation();
+  iima_native_video_frame_update_generations[sessionKey] = @(generation);
+  dispatch_async(dispatch_get_main_queue(), ^{
+    NSNumber *pendingGeneration = iima_native_video_frame_update_generations[sessionKey];
+    if (pendingGeneration == nil || pendingGeneration.unsignedLongLongValue != generation) {
+      return;
+    }
+    [iima_native_video_frame_update_generations removeObjectForKey:sessionKey];
+    [iima_native_video_force_surface_updates removeObject:sessionKey];
+    if (!iima_native_video_apply_window_frame(sessionKey, YES)) {
+      iima_native_video_schedule_window_frame_retry(sessionKey, 1);
+    }
+  });
+}
+
+static void iima_native_video_begin_live_resize(NSString *session) {
+  iima_native_video_assert_main_thread();
+  NSString *sessionKey = [session copy];
+  [iima_native_video_live_resize_sessions addObject:sessionKey];
+  [iima_native_video_suspended_live_frame_updates removeObject:sessionKey];
+  iima_native_video_schedule_live_window_frame_update(sessionKey);
+}
+
+static void iima_native_video_end_live_resize(NSString *session) {
+  iima_native_video_assert_main_thread();
+  NSString *sessionKey = [session copy];
+  [iima_native_video_live_resize_sessions removeObject:sessionKey];
+  [iima_native_video_suspended_live_frame_updates removeObject:sessionKey];
+  // Invalidate a queued hot-path block before scheduling the one full post-resize reconciliation.
+  [iima_native_video_live_frame_update_generations removeObjectForKey:sessionKey];
+  [iima_native_video_live_frame_updates removeObject:sessionKey];
+  [iima_native_video_force_surface_updates addObject:sessionKey];
+  iima_native_video_schedule_final_window_frame_update(sessionKey);
 }
 
 static void iima_native_video_schedule_window_frame_update(NSString *session) {
@@ -619,15 +753,50 @@ static void iima_native_video_observe_parent_window(NSString *session) {
     return;
   }
   NSString *sessionKey = [session copy];
-  NSArray<NSNotificationName> *names = @[
+  NSMutableArray<id> *observers = [[NSMutableArray alloc] initWithCapacity:7];
+  id liveResizeStartObserver = [[NSNotificationCenter defaultCenter]
+    addObserverForName:NSWindowWillStartLiveResizeNotification
+                object:parent
+                 queue:[NSOperationQueue mainQueue]
+            usingBlock:^(__unused NSNotification *notification) {
+              iima_native_video_begin_live_resize(sessionKey);
+            }];
+  [observers addObject:liveResizeStartObserver];
+
+  id liveResizeEndObserver = [[NSNotificationCenter defaultCenter]
+    addObserverForName:NSWindowDidEndLiveResizeNotification
+                object:parent
+                 queue:[NSOperationQueue mainQueue]
+            usingBlock:^(__unused NSNotification *notification) {
+              iima_native_video_end_live_resize(sessionKey);
+            }];
+  [observers addObject:liveResizeEndObserver];
+
+  NSArray<NSNotificationName> *geometryNames = @[
     NSWindowDidMoveNotification,
     NSWindowDidResizeNotification,
+  ];
+  for (NSNotificationName name in geometryNames) {
+    id observer = [[NSNotificationCenter defaultCenter]
+      addObserverForName:name
+                  object:parent
+                   queue:[NSOperationQueue mainQueue]
+              usingBlock:^(__unused NSNotification *notification) {
+                if ([iima_native_video_live_resize_sessions containsObject:sessionKey]) {
+                  iima_native_video_schedule_live_window_frame_update(sessionKey);
+                } else {
+                  iima_native_video_schedule_window_frame_update(sessionKey);
+                }
+              }];
+    [observers addObject:observer];
+  }
+
+  NSArray<NSNotificationName> *transitionNames = @[
     NSWindowDidEnterFullScreenNotification,
     NSWindowDidExitFullScreenNotification,
     NSWindowDidChangeScreenNotification,
   ];
-  NSMutableArray<id> *observers = [[NSMutableArray alloc] initWithCapacity:names.count];
-  for (NSNotificationName name in names) {
+  for (NSNotificationName name in transitionNames) {
     id observer = [[NSNotificationCenter defaultCenter]
       addObserverForName:name
                   object:parent
@@ -1523,6 +1692,10 @@ void iima_native_video_remove_session(const char *sessionLabel) {
     // then observes the missing token even if window teardown spins a nested event cycle.
     [iima_native_video_frame_retry_attempts removeObjectForKey:session];
     [iima_native_video_frame_update_generations removeObjectForKey:session];
+    [iima_native_video_live_frame_update_generations removeObjectForKey:session];
+    [iima_native_video_live_frame_updates removeObject:session];
+    [iima_native_video_live_resize_sessions removeObject:session];
+    [iima_native_video_suspended_live_frame_updates removeObject:session];
     [iima_native_video_force_surface_updates removeObject:session];
     IIMANativeVideoView *view = iima_native_video_view_for_session(session);
     [view detachMpvClient];

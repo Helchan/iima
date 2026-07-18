@@ -223,6 +223,8 @@ pub const IINA_POLLED_PROPERTIES: &[MpvObservedProperty] = &[
     observed("vid", MpvFormat::Int64),
     observed("aid", MpvFormat::Int64),
     observed("sid", MpvFormat::Int64),
+    observed("dwidth", MpvFormat::Int64),
+    observed("dheight", MpvFormat::Int64),
     observed("sub-codepage", MpvFormat::String),
     observed("idle-active", MpvFormat::Flag),
 ];
@@ -699,12 +701,43 @@ struct MpvRendererBridge {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MpvRendererAttachmentState {
     Detached,
+    Attaching,
     Attached,
 }
 
 struct MpvRendererAttachment {
     state: MpvRendererAttachmentState,
     bridge: Option<MpvRendererBridge>,
+}
+
+struct MpvRendererAttachRequest {
+    bridge: MpvRendererBridge,
+    mpv_handle: *mut c_void,
+    libmpv_path: String,
+    session: String,
+}
+
+struct MpvPlayerOperationSyncPreparation {
+    attachment: Option<MpvRendererAttachRequest>,
+    errors: Vec<String>,
+}
+
+impl MpvRendererAttachRequest {
+    /// Runs the AppKit-facing renderer attachment without an `MpvExecutor` mutex guard.
+    ///
+    /// On macOS the native bridge synchronously hops to the main queue. Keeping this request
+    /// separate from executor mutation prevents the main thread and the executor poll thread from
+    /// waiting on each other in opposite lock order.
+    fn perform(self) -> Result<(), String> {
+        (self.bridge.attach)(self.mpv_handle, &self.libmpv_path, &self.session)?;
+        if !(self.bridge.is_attached)(&self.session)? {
+            return Err(format!(
+                "native video renderer for session {} did not report an attached render context",
+                self.session
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl MpvRendererAttachment {
@@ -732,28 +765,46 @@ impl MpvRendererAttachment {
         }
     }
 
-    fn ensure_attached(
+    fn begin_attach(
         &mut self,
         mpv_handle: *mut c_void,
         libmpv_path: &str,
         session: &str,
-    ) -> Result<(), String> {
+    ) -> Result<Option<MpvRendererAttachRequest>, String> {
         match self.state {
-            MpvRendererAttachmentState::Attached => return Ok(()),
+            MpvRendererAttachmentState::Attached | MpvRendererAttachmentState::Attaching => {
+                return Ok(None)
+            }
             MpvRendererAttachmentState::Detached => {}
         }
         let bridge = self
             .bridge
             .as_ref()
             .ok_or_else(|| "native video renderer bridge is unavailable".to_string())?;
-        (bridge.attach)(mpv_handle, libmpv_path, session)?;
-        if !(bridge.is_attached)(session)? {
-            return Err(format!(
-                "native video renderer for session {session} did not report an attached render context"
-            ));
+        let request = MpvRendererAttachRequest {
+            bridge: bridge.clone(),
+            mpv_handle,
+            libmpv_path: libmpv_path.to_string(),
+            session: session.to_string(),
+        };
+        self.state = MpvRendererAttachmentState::Attaching;
+        Ok(Some(request))
+    }
+
+    fn complete_attach(&mut self, result: Result<(), String>) -> Result<(), String> {
+        if self.state != MpvRendererAttachmentState::Attaching {
+            return Err("native video renderer attachment completion was not pending".to_string());
         }
-        self.state = MpvRendererAttachmentState::Attached;
-        Ok(())
+        match result {
+            Ok(()) => {
+                self.state = MpvRendererAttachmentState::Attached;
+                Ok(())
+            }
+            Err(error) => {
+                self.state = MpvRendererAttachmentState::Detached;
+                Err(error)
+            }
+        }
     }
 }
 
@@ -884,12 +935,28 @@ impl MpvExecutor {
         true
     }
 
-    pub fn submit_player_operation_log(
+    #[cfg(test)]
+    fn submit_player_operation_log(
         &mut self,
         first_sequence: u64,
         next_sequence: u64,
         operations: &[MpvClientOperation],
     ) -> MpvExecutorStatus {
+        let mut preparation =
+            self.begin_player_operation_log_sync(first_sequence, next_sequence, operations);
+        if let Some(attachment) = preparation.attachment.take() {
+            let result = attachment.perform();
+            self.complete_renderer_attachment(result, &mut preparation.errors);
+        }
+        self.finish_player_operation_log_sync(preparation.errors)
+    }
+
+    fn begin_player_operation_log_sync(
+        &mut self,
+        first_sequence: u64,
+        next_sequence: u64,
+        operations: &[MpvClientOperation],
+    ) -> MpvPlayerOperationSyncPreparation {
         let (start_index, sync_error) =
             self.next_operation_index(first_sequence, next_sequence, operations.len());
         let new_operations = operations.get(start_index..).unwrap_or_default().to_vec();
@@ -908,9 +975,50 @@ impl MpvExecutor {
             }
         }
 
+        let mut attachment = None;
         if !self.pending_operations.is_empty() || !self.runtime_status.available {
-            if let Err(error) = self.drain_pending_operations() {
+            if !self.runtime_status.available {
+                errors.push(self.pending_blocker_message());
+            } else if let Err(error) = self.ensure_client() {
                 errors.push(error);
+            } else {
+                match self.begin_renderer_attachment() {
+                    Ok(request) => attachment = request,
+                    Err(error) => errors.push(error),
+                }
+            }
+        } else {
+            self.drain_client_events();
+        }
+        self.poll_client_properties();
+
+        MpvPlayerOperationSyncPreparation { attachment, errors }
+    }
+
+    fn complete_renderer_attachment(
+        &mut self,
+        result: Result<(), String>,
+        errors: &mut Vec<String>,
+    ) {
+        if let Err(error) = self.renderer_attachment.complete_attach(result) {
+            errors.push(error);
+        }
+    }
+
+    fn finish_player_operation_log_sync(&mut self, mut errors: Vec<String>) -> MpvExecutorStatus {
+        if !self.pending_operations.is_empty() {
+            match self.renderer_attachment.state {
+                MpvRendererAttachmentState::Attached => {
+                    if let Err(error) = self.drain_pending_operations() {
+                        errors.push(error);
+                    }
+                }
+                MpvRendererAttachmentState::Detached => {
+                    if errors.is_empty() {
+                        errors.push("native video renderer is not attached".to_string());
+                    }
+                }
+                MpvRendererAttachmentState::Attaching => {}
             }
         } else {
             self.drain_client_events();
@@ -1140,7 +1248,15 @@ impl MpvExecutor {
             return Ok(());
         }
         self.ensure_client()?;
-        let renderer_readiness = self.ensure_renderer_attached();
+        let renderer_readiness = match self.renderer_attachment.state {
+            MpvRendererAttachmentState::Attached => Ok(()),
+            MpvRendererAttachmentState::Attaching => {
+                Err("native video renderer attachment is still in progress".to_string())
+            }
+            MpvRendererAttachmentState::Detached => {
+                Err("native video renderer is not attached".to_string())
+            }
+        };
         self.drain_client_events();
 
         let mut pending_operations = std::mem::take(&mut self.pending_operations);
@@ -1200,7 +1316,7 @@ impl MpvExecutor {
         Ok(())
     }
 
-    fn ensure_renderer_attached(&mut self) -> Result<(), String> {
+    fn begin_renderer_attachment(&mut self) -> Result<Option<MpvRendererAttachRequest>, String> {
         let client = self
             .client
             .as_ref()
@@ -1210,7 +1326,7 @@ impl MpvExecutor {
             .path
             .as_deref()
             .ok_or_else(|| "libmpv runtime status did not include a path".to_string())?;
-        self.renderer_attachment.ensure_attached(
+        self.renderer_attachment.begin_attach(
             client.handle.cast::<c_void>(),
             path,
             &self.native_video_session,
@@ -1306,6 +1422,49 @@ impl MpvExecutor {
             "libmpv client is not initialized".to_string()
         }
     }
+}
+
+/// Synchronizes one player operation log without holding the executor mutex across native UI
+/// attachment. The attachment bridge performs a synchronous main-queue hop on macOS, so this
+/// lock boundary is the shared deadlock-prevention contract for every player session.
+pub fn sync_mpv_executor_from_player_log(
+    executor: &Mutex<MpvExecutor>,
+    first_sequence: u64,
+    next_sequence: u64,
+    operations: &[MpvClientOperation],
+) -> Result<MpvExecutorStatus, String> {
+    let mut preparation = executor
+        .lock()
+        .map_err(|error| error.to_string())?
+        .begin_player_operation_log_sync(first_sequence, next_sequence, operations);
+
+    if let Some(attachment) = preparation.attachment.take() {
+        perform_renderer_attachment_without_executor_lock(
+            executor,
+            attachment,
+            &mut preparation.errors,
+        )?;
+    }
+
+    Ok(executor
+        .lock()
+        .map_err(|error| error.to_string())?
+        .finish_player_operation_log_sync(preparation.errors))
+}
+
+fn perform_renderer_attachment_without_executor_lock(
+    executor: &Mutex<MpvExecutor>,
+    attachment: MpvRendererAttachRequest,
+    errors: &mut Vec<String>,
+) -> Result<(), String> {
+    // Deliberately no `MutexGuard<MpvExecutor>` here: the native renderer may synchronously wait
+    // for AppKit's main thread, which is itself allowed to enter executor-backed commands.
+    let result = attachment.perform();
+    executor
+        .lock()
+        .map_err(|error| error.to_string())?
+        .complete_renderer_attachment(result, errors);
+    Ok(())
 }
 
 fn apply_mpv_process_environment_plan(plan: &MpvProcessEnvironmentPlan) -> Result<(), String> {
@@ -4026,6 +4185,8 @@ mod tests {
         assert!(names.contains(&"playlist-count"));
         assert!(names.contains(&"playlist-pos"));
         assert!(names.contains(&"track-list/count"));
+        assert!(names.contains(&"dwidth"));
+        assert!(names.contains(&"dheight"));
         assert!(names.contains(&"sub-codepage"));
         assert!(names.contains(&"idle-active"));
         assert!(IINA_POLLED_PROPERTIES
@@ -4034,6 +4195,12 @@ mod tests {
         assert!(IINA_POLLED_PROPERTIES
             .iter()
             .any(|property| property.name == "path" && property.format == MpvFormat::String));
+        assert!(IINA_POLLED_PROPERTIES
+            .iter()
+            .any(|property| property.name == "dwidth" && property.format == MpvFormat::Int64));
+        assert!(IINA_POLLED_PROPERTIES
+            .iter()
+            .any(|property| property.name == "dheight" && property.format == MpvFormat::Int64));
     }
 
     #[test]
@@ -4883,8 +5050,14 @@ mod tests {
         let mut executed_operation_count = 0;
         let mut observed_operations = Vec::new();
 
-        let first_readiness =
-            renderer_attachment.ensure_attached(mpv_handle, "/tmp/libmpv.dylib", "main");
+        let first_request = renderer_attachment
+            .begin_attach(mpv_handle, "/tmp/libmpv.dylib", "main")
+            .expect("the first renderer attach request should be prepared")
+            .expect("the detached renderer should produce an attach request");
+        let first_readiness = first_request.perform();
+        let first_readiness = renderer_attachment
+            .complete_attach(first_readiness)
+            .map(|_| ());
         let first_error = drain_pending_operation_queue(
             &mut pending_operations,
             &mut executed_operation_count,
@@ -4906,8 +5079,14 @@ mod tests {
         );
         assert_eq!(attach_attempts.load(Ordering::SeqCst), 1);
 
-        let second_readiness =
-            renderer_attachment.ensure_attached(mpv_handle, "/tmp/libmpv.dylib", "main");
+        let second_request = renderer_attachment
+            .begin_attach(mpv_handle, "/tmp/libmpv.dylib", "main")
+            .expect("the retry renderer attach request should be prepared")
+            .expect("the detached renderer should retry attachment");
+        let second_readiness = second_request.perform();
+        let second_readiness = renderer_attachment
+            .complete_attach(second_readiness)
+            .map(|_| ());
         drain_pending_operation_queue(
             &mut pending_operations,
             &mut executed_operation_count,
@@ -4928,8 +5107,13 @@ mod tests {
         );
         assert_eq!(attach_attempts.load(Ordering::SeqCst), 2);
 
-        let third_readiness =
-            renderer_attachment.ensure_attached(mpv_handle, "/tmp/libmpv.dylib", "main");
+        let third_readiness = renderer_attachment
+            .begin_attach(mpv_handle, "/tmp/libmpv.dylib", "main")
+            .expect("the attached renderer should remain ready")
+            .map_or(Ok(()), |request| {
+                let result = request.perform();
+                renderer_attachment.complete_attach(result)
+            });
         drain_pending_operation_queue(
             &mut pending_operations,
             &mut executed_operation_count,
@@ -4968,8 +5152,12 @@ mod tests {
             .as_ptr()
             .cast::<c_void>();
 
+        let request = renderer_attachment
+            .begin_attach(mpv_handle, "/tmp/libmpv.dylib", "main")
+            .expect("the renderer attach request should be prepared")
+            .expect("the detached renderer should produce an attach request");
         let error = renderer_attachment
-            .ensure_attached(mpv_handle, "/tmp/libmpv.dylib", "main")
+            .complete_attach(request.perform())
             .expect_err("a missing native render context must keep the renderer detached");
 
         assert!(error.contains("did not report an attached render context"));
@@ -4980,8 +5168,12 @@ mod tests {
         assert_eq!(attach_attempts.load(Ordering::SeqCst), 1);
 
         native_attached.store(true, Ordering::SeqCst);
+        let retry = renderer_attachment
+            .begin_attach(mpv_handle, "/tmp/libmpv.dylib", "main")
+            .expect("the retry renderer attach request should be prepared")
+            .expect("the detached renderer should retry attachment");
         renderer_attachment
-            .ensure_attached(mpv_handle, "/tmp/libmpv.dylib", "main")
+            .complete_attach(retry.perform())
             .expect("the native attached status should make the retry ready");
 
         assert_eq!(
@@ -4989,6 +5181,130 @@ mod tests {
             MpvRendererAttachmentState::Attached
         );
         assert_eq!(attach_attempts.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn renderer_attachment_callback_runs_without_holding_executor_mutex() {
+        let executor = Arc::new(Mutex::new(MpvExecutor::with_runtime_status(
+            unavailable_runtime_status(),
+        )));
+        let executor_for_attach = Arc::downgrade(&executor);
+        let bridge = MpvRendererBridge {
+            attach: Arc::new(move |_handle, _path, _session| {
+                let executor = executor_for_attach
+                    .upgrade()
+                    .expect("executor should remain alive during attachment");
+                assert!(
+                    executor.try_lock().is_ok(),
+                    "native attachment must never run under the executor mutex"
+                );
+                Ok(())
+            }),
+            is_attached: Arc::new(|_session| Ok(true)),
+        };
+        let request = {
+            let mut executor = executor
+                .lock()
+                .expect("lock executor to prepare attachment");
+            executor.renderer_attachment = MpvRendererAttachment::required(bridge);
+            executor
+                .renderer_attachment
+                .begin_attach(
+                    std::ptr::NonNull::<u8>::dangling()
+                        .as_ptr()
+                        .cast::<c_void>(),
+                    "/tmp/libmpv.dylib",
+                    "main",
+                )
+                .expect("prepare renderer attachment")
+                .expect("detached renderer should produce a request")
+        };
+
+        let mut errors = Vec::new();
+        perform_renderer_attachment_without_executor_lock(&executor, request, &mut errors)
+            .expect("perform renderer attachment outside the executor lock");
+        assert!(errors.is_empty());
+        assert_eq!(
+            executor
+                .lock()
+                .expect("inspect completed renderer attachment")
+                .renderer_attachment
+                .state,
+            MpvRendererAttachmentState::Attached
+        );
+    }
+
+    #[test]
+    fn interleaved_operation_syncs_preserve_each_calls_errors() {
+        let mut executor = MpvExecutor::with_runtime_status(unavailable_runtime_status());
+        let operations = vec![mpv_command("loadfile", ["/tmp/current.mp4", "replace"])];
+
+        let first = executor.begin_player_operation_log_sync(1, 2, &operations);
+        assert!(first.attachment.is_none());
+        let second = executor.begin_player_operation_log_sync(1, 2, &operations);
+        assert!(second.attachment.is_none());
+
+        // Complete the later call first, matching the interleaving made possible by releasing the
+        // executor mutex for AppKit attachment. Its status must not consume the first call's
+        // operation-log diagnostic, and the first call must still return that diagnostic later.
+        let second_status = executor.finish_player_operation_log_sync(second.errors);
+        let first_status = executor.finish_player_operation_log_sync(first.errors);
+
+        assert!(second_status
+            .last_error
+            .as_deref()
+            .is_some_and(|error| error.contains("libmpv unavailable")));
+        assert!(!second_status
+            .last_error
+            .as_deref()
+            .is_some_and(|error| error.contains("trimmed before executor sync")));
+        assert!(first_status
+            .last_error
+            .as_deref()
+            .is_some_and(|error| error.contains("trimmed before executor sync")));
+        assert!(first_status
+            .last_error
+            .as_deref()
+            .is_some_and(|error| error.contains("libmpv unavailable")));
+    }
+
+    #[test]
+    fn renderer_attachment_failure_appends_to_current_sync_errors() {
+        let bridge = MpvRendererBridge {
+            attach: Arc::new(|_handle, _path, _session| {
+                Err("native video surface is not ready".to_string())
+            }),
+            is_attached: Arc::new(|_session| Ok(false)),
+        };
+        let mut executor = MpvExecutor::with_runtime_status(unavailable_runtime_status());
+        executor.renderer_attachment = MpvRendererAttachment::required(bridge);
+        let request = executor
+            .renderer_attachment
+            .begin_attach(
+                std::ptr::NonNull::<u8>::dangling()
+                    .as_ptr()
+                    .cast::<c_void>(),
+                "/tmp/libmpv.dylib",
+                "main",
+            )
+            .expect("prepare renderer attachment")
+            .expect("detached renderer should produce a request");
+        let mut errors =
+            vec!["mpv executor pending queue dropped 1 oldest operation(s)".to_string()];
+
+        executor.complete_renderer_attachment(request.perform(), &mut errors);
+        let status = executor.finish_player_operation_log_sync(errors);
+
+        assert_eq!(
+            executor.renderer_attachment.state,
+            MpvRendererAttachmentState::Detached
+        );
+        let error = status
+            .last_error
+            .as_deref()
+            .expect("both current-sync errors should be reported");
+        assert!(error.contains("pending queue dropped 1 oldest operation"));
+        assert!(error.contains("native video surface is not ready"));
     }
 
     #[test]

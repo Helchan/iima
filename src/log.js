@@ -15,7 +15,7 @@ let selection = new Set();
 let selectionAnchor = -1;
 
 const mockRecords = [
-  { subsystem: "iina", level: 1, date: "09:41:18.023", message: "IINA 0.9.2 Build 92", log_string: "09:41:18.023 [iina][d] IINA 0.9.2 Build 92\n" },
+  { subsystem: "iina", level: 1, date: "09:41:18.023", message: "IINA 0.9.3 Build 93", log_string: "09:41:18.023 [iina][d] IINA 0.9.3 Build 93\n" },
   { subsystem: "mpv0", level: 0, date: "09:41:18.126", message: "Using libmpv render API", log_string: "09:41:18.126 [mpv0][v] Using libmpv render API\n" },
   { subsystem: "iina", level: 2, date: "09:41:18.214", message: "Release highlights loaded", log_string: "09:41:18.214 [iina][w] Release highlights loaded\n" },
 ];

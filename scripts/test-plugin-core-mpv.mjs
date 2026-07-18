@@ -86,8 +86,8 @@ assert.ok(player.includes("ExternalTrackKind::Video"));
 for (const route of ["core.resolveopen", "core.version", "core.history", "core.window.snapshot", "core.window.setframe", "mpv.get", "mpv.set", "mpv.command"]) {
   assert.ok(sync.includes(`"${route}"`), `Missing synchronous plugin route: ${route}`);
 }
-assert.ok(about.includes('pub(crate) const IINA_VERSION: &str = "0.9.2";'));
-assert.ok(about.includes('pub(crate) const IINA_BUILD: &str = "92";'));
+assert.ok(about.includes('pub(crate) const IINA_VERSION: &str = "0.9.3";'));
+assert.ok(about.includes('pub(crate) const IINA_BUILD: &str = "93";'));
 assert.ok(sync.includes('"iina": crate::about_window::IINA_VERSION'));
 assert.ok(sync.includes('"build": crate::about_window::IINA_BUILD'));
 

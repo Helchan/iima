@@ -78,6 +78,7 @@ const THUMBNAIL_PROGRESS_EVENT: &str = "iima-thumbnail-progress";
 const MINI_PLAYER_CONTROL_HEIGHT: f64 = 72.0;
 const MINI_PLAYER_PLAYLIST_HEIGHT: f64 = 300.0;
 const MINI_PLAYER_INITIAL_WIDTH: f64 = 300.0;
+const PLAYER_WINDOW_FALLBACK_VIDEO_SIZE: (f64, f64) = (640.0, 360.0);
 pub(crate) const PREFERENCE_CHANGED_EVENT: &str = "iima-preference-changed";
 static PLAYLIST_TEMPORARY_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 static PLUGIN_FILE_TEMPORARY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -5837,11 +5838,28 @@ fn sync_player_window_chrome<R: Runtime>(
     window: &WebviewWindow<R>,
     snapshot: &PlayerState,
 ) -> Result<(), String> {
-    sync_player_window_chrome_for_fullscreen(
-        window,
-        snapshot,
-        player_window_is_fullscreen(window)?,
-    )
+    sync_player_window_chrome_for_fullscreen(window, snapshot, player_window_is_fullscreen(window)?)
+}
+
+fn sync_player_window_aspect_ratio<R: Runtime>(
+    window: &WebviewWindow<R>,
+    snapshot: &PlayerState,
+) -> Result<(), String> {
+    if !is_player_window_label(window.label()) || is_plugin_disable_ui_player_window(window) {
+        return Ok(());
+    }
+    #[cfg(target_os = "macos")]
+    native_window_behavior::set_player_window_aspect_ratio(
+        window.ns_window().map_err(|error| error.to_string())?,
+        Some(
+            snapshot
+                .video_size_for_display()
+                .unwrap_or(PLAYER_WINDOW_FALLBACK_VIDEO_SIZE),
+        ),
+    )?;
+    #[cfg(not(target_os = "macos"))]
+    let _ = snapshot;
+    Ok(())
 }
 
 fn prepare_initial_player_window(state: &AppState, session_label: &str) -> Result<(), String> {
@@ -5878,6 +5896,7 @@ fn sync_player_window_surface<R: Runtime>(
 ) -> Result<(), String> {
     let window = app.get_webview_window(session_label);
     if let Some(window) = window.as_ref() {
+        sync_player_window_aspect_ratio(window, snapshot)?;
         sync_player_window_title(window, snapshot)?;
         sync_player_window_chrome(window, snapshot)?;
     }
@@ -6175,6 +6194,7 @@ pub(crate) fn observe_player_window_lifecycle<R: Runtime>(
             playing,
         );
         changed |= apply_playback_directive(&mut player, directive, &mut playing);
+        changed |= player.set_window_keepaspect(fullscreen);
         let directive = lifecycle.observe_focus(
             focused,
             bool_preference(&preferences.values, "pauseWhenInactive", false),
@@ -6322,9 +6342,22 @@ pub(crate) fn set_player_window_fullscreen<R: Runtime>(
     if !is_player_window_label(window.label()) {
         return Err("Full screen is available only in a player window".to_string());
     }
+    // Match IINA's windowWillEnter/ExitFullScreen ordering: switch mpv's aspect policy before
+    // AppKit starts the transition so its first animated frame is already letterboxed correctly.
+    // Lifecycle observation below remains the fallback for the native green-window button.
+    let session = state.player_session_for_window(window.label())?;
+    let keepaspect_changed = session
+        .player()
+        .lock()
+        .map(|mut player| player.set_window_keepaspect(fullscreen))
+        .map_err(|error| error.to_string())?;
+    if keepaspect_changed {
+        session.sync_mpv_executor_from_player()?;
+        let snapshot = player_snapshot_for_session(&session)?;
+        emit_player_state_for_session(app, session.label(), &snapshot);
+    }
     if player_window_is_fullscreen(window)? == fullscreen {
         emit_player_window_status(app, window);
-        let session = state.player_session_for_window(window.label())?;
         let snapshot = session
             .player()
             .lock()
@@ -6388,7 +6421,6 @@ pub(crate) fn set_player_window_fullscreen<R: Runtime>(
     }
     let _ = menu::refresh_iina_menu(app);
     emit_player_window_status(app, window);
-    let session = state.player_session_for_window(window.label())?;
     let snapshot = session
         .player()
         .lock()
@@ -6503,18 +6535,17 @@ mod tests {
         percent_encode_query_component, playback_window_resize_action,
         player_session_creation_index, player_window_chrome_visible, player_window_title_plan,
         player_window_url_disables_ui, player_window_url_is_plugin_managed,
-        plugin_download_temporary_path,
-        plugin_file_handle_bytes, plugin_http_body, plugin_http_method, plugin_http_reason,
-        plugin_http_response, plugin_http_response_is_ok, plugin_keychain_service,
-        plugin_track_file_path, read_plugin_file_handle_to_end, recreate_directory,
-        remove_file_if_present, sanitized_config_filename, screenshot_options_from_preferences,
-        select_reusable_idle_player_label, serialize_m3u8_playlist, service_open_url_route,
-        service_player_controller_session_label, should_note_recent_document,
-        should_open_in_new_player, should_quit_after_last_window_closes,
-        should_record_recent_media_path, split_plugin_http_write_out, validate_plugin_http_header,
-        validate_updater_preference, window_presentation, write_atomic_playlist,
-        write_plugin_text_atomically, PlayerWindowTitlePlan, PluginFileHandleMode,
-        PluginOpenFileHandle, RecentDocumentSource,
+        plugin_download_temporary_path, plugin_file_handle_bytes, plugin_http_body,
+        plugin_http_method, plugin_http_reason, plugin_http_response, plugin_http_response_is_ok,
+        plugin_keychain_service, plugin_track_file_path, read_plugin_file_handle_to_end,
+        recreate_directory, remove_file_if_present, sanitized_config_filename,
+        screenshot_options_from_preferences, select_reusable_idle_player_label,
+        serialize_m3u8_playlist, service_open_url_route, service_player_controller_session_label,
+        should_note_recent_document, should_open_in_new_player,
+        should_quit_after_last_window_closes, should_record_recent_media_path,
+        split_plugin_http_write_out, validate_plugin_http_header, validate_updater_preference,
+        window_presentation, write_atomic_playlist, write_plugin_text_atomically,
+        PlayerWindowTitlePlan, PluginFileHandleMode, PluginOpenFileHandle, RecentDocumentSource,
     };
     use crate::mpv::{mpv_command, set_property, MpvFormat};
     use crate::online_subtitles::OpenSubtitlesSession;
@@ -6641,6 +6672,27 @@ mod tests {
     }
 
     #[test]
+    fn player_window_aspect_sync_precedes_surface_lifecycle_early_returns() {
+        let source = include_str!("commands.rs");
+        let surface = source
+            .split_once("fn sync_player_window_surface")
+            .expect("player surface sync function")
+            .1
+            .split_once("fn show_initial_player_window")
+            .expect("bounded player surface sync body")
+            .0;
+        let aspect = surface
+            .find("sync_player_window_aspect_ratio(window, snapshot)?;")
+            .expect("aspect ratio synchronization");
+        let lifecycle = surface
+            .find("if !observe_player_window_surface")
+            .expect("surface lifecycle early return");
+        assert!(aspect < lifecycle);
+        assert!(source.contains("unwrap_or(PLAYER_WINDOW_FALLBACK_VIDEO_SIZE)"));
+        assert_eq!(super::PLAYER_WINDOW_FALLBACK_VIDEO_SIZE, (640.0, 360.0));
+    }
+
+    #[test]
     fn player_window_chrome_follows_the_same_visibility_state_as_the_osc() {
         let mut snapshot = PlayerState::default();
         assert!(!player_window_chrome_visible(&snapshot, false));
@@ -6658,9 +6710,8 @@ mod tests {
 
         let source = include_str!("commands.rs");
         assert!(source.contains("player_window_is_fullscreen(window)?"));
-        assert!(source.contains(
-            "sync_player_window_chrome_for_fullscreen(window, &snapshot, fullscreen)?;"
-        ));
+        assert!(source
+            .contains("sync_player_window_chrome_for_fullscreen(window, &snapshot, fullscreen)?;"));
         let lifecycle = source
             .split("pub(crate) fn observe_player_window_lifecycle")
             .nth(1)
@@ -6671,6 +6722,34 @@ mod tests {
         assert!(lifecycle.contains(
             "sync_player_window_chrome_for_fullscreen(&window, &chrome_snapshot, fullscreen)?;"
         ));
+    }
+
+    #[test]
+    fn explicit_fullscreen_switches_mpv_aspect_policy_before_appkit_transition() {
+        let source = include_str!("commands.rs");
+        let transition = source
+            .split_once("pub(crate) fn set_player_window_fullscreen")
+            .expect("fullscreen transition function")
+            .1
+            .split_once("pub fn toggle_window_fullscreen")
+            .expect("bounded fullscreen transition body")
+            .0;
+        let keepaspect = transition
+            .find("player.set_window_keepaspect(fullscreen)")
+            .expect("pre-transition mpv aspect policy");
+        let appkit_transition = transition
+            .find(".set_fullscreen(true)")
+            .expect("native AppKit fullscreen transition");
+        assert!(keepaspect < appkit_transition);
+
+        let lifecycle = source
+            .split_once("pub(crate) fn observe_player_window_lifecycle")
+            .expect("player lifecycle function")
+            .1
+            .split_once("pub(crate) fn remove_player_window_lifecycle")
+            .expect("bounded player lifecycle body")
+            .0;
+        assert!(lifecycle.contains("player.set_window_keepaspect(fullscreen)"));
     }
 
     #[test]

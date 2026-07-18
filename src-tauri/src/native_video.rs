@@ -968,7 +968,7 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn macos_child_window_frame_updates_wait_for_notification_quiet_period() {
+    fn macos_child_window_live_resize_updates_each_main_queue_turn() {
         let source = include_str!("native_video.m");
         let observer_start = source
             .find("static void iima_native_video_observe_parent_window")
@@ -979,12 +979,34 @@ mod tests {
             .expect("observer should end before the session-view helper");
         let observer = &source[observer_start..observer_end];
 
-        assert!(observer.contains("iima_native_video_schedule_window_frame_update(sessionKey);"));
-        assert!(!observer.contains("iima_native_video_update_window_frame(sessionKey);"));
-        assert!(!observer.contains("iima_native_video_apply_window_frame(sessionKey"));
+        for notification in [
+            "NSWindowWillStartLiveResizeNotification",
+            "NSWindowDidResizeNotification",
+            "NSWindowDidEndLiveResizeNotification",
+        ] {
+            assert!(
+                observer.contains(notification),
+                "live-resize observer is missing {notification}"
+            );
+        }
         for contract in [
+            "iima_native_video_live_resize_sessions",
+            "iima_native_video_live_frame_updates",
+            "iima_native_video_live_frame_update_generations",
+            "iima_native_video_suspended_live_frame_updates",
+            "dispatch_async(dispatch_get_main_queue()",
+            "[videoWindow setFrame:targetFrame display:NO];",
+            "[view requestRender];",
+            // The end-live-resize path must use the full updater and force an OpenGL surface
+            // refresh after the fast geometry-only turns.
+            "[iima_native_video_force_surface_updates addObject:sessionKey];",
+            "iima_native_video_schedule_final_window_frame_update(sessionKey);",
+            "[context update];",
+            // Non-interactive fullscreen/screen transitions retain the quiet-period path.
             "static const NSTimeInterval quietPeriod = 0.075;",
             "iima_native_video_next_frame_update_generation()",
+            "iima_native_video_live_frame_update_generations[sessionKey] = @(generation);",
+            "iima_native_video_live_frame_update_generations removeObjectForKey:sessionKey",
             "iima_native_video_frame_update_generations[sessionKey] = @(generation);",
             "pendingGeneration.unsignedLongLongValue != generation",
             "iima_native_video_frame_update_generations removeObjectForKey:sessionKey",
@@ -993,16 +1015,19 @@ mod tests {
             "@catch (NSException *exception)",
             "iima_native_video_schedule_window_frame_retry(session, 1);",
             "iima_native_video_apply_window_frame(sessionKey, forceSurfaceUpdate)",
-            "[videoWindow setFrame:targetFrame display:NO];",
-            "[view requestRender];",
-            "[context update];",
             "static const NSUInteger maxAttempts = 3;",
         ] {
             assert!(
                 source.contains(contract),
-                "exception-safe frame synchronization contract is missing: {contract}"
+                "live/exception-safe frame synchronization contract is missing: {contract}"
             );
         }
+
+        assert!(
+            observer.contains("iima_native_video_schedule_live_window_frame_update(sessionKey);")
+                || observer.contains("iima_native_video_schedule_live_frame_update(sessionKey);"),
+            "DidResize must route live-resize events to a main-turn fast scheduler"
+        );
     }
 
     #[cfg(target_os = "macos")]

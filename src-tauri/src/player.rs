@@ -115,6 +115,14 @@ pub struct PlayerState {
     #[serde(skip)]
     runtime_loop_playlist_active: bool,
     #[serde(skip)]
+    runtime_display_width: Option<i64>,
+    #[serde(skip)]
+    runtime_display_height: Option<i64>,
+    #[serde(skip)]
+    runtime_video_params_rotation: Option<i64>,
+    #[serde(skip)]
+    window_keepaspect: bool,
+    #[serde(skip)]
     command_line_shuffle_pending: bool,
     #[serde(skip)]
     pending_open_error: Option<PlaybackError>,
@@ -772,6 +780,10 @@ impl Default for PlayerState {
             mpv_operation_log: Vec::new(),
             runtime_loop_file_active: false,
             runtime_loop_playlist_active: false,
+            runtime_display_width: None,
+            runtime_display_height: None,
+            runtime_video_params_rotation: None,
+            window_keepaspect: false,
             command_line_shuffle_pending: false,
             pending_open_error: None,
             pending_idle_reset: false,
@@ -1025,17 +1037,49 @@ impl PlayerState {
             .iter()
             .find(|track| track.selected)
             .or_else(|| self.tracks.video.first())?;
-        let mut width = track.metadata.demux_width? as f64;
-        let mut height = track.metadata.demux_height? as f64;
+        let (runtime_width, runtime_height) =
+            (self.runtime_display_width, self.runtime_display_height);
+        let user_rotation = self.quick_settings.video_rotate.rem_euclid(360);
+        let (mut width, mut height, uses_runtime_display_size) =
+            match (runtime_width, runtime_height) {
+                (Some(width), Some(height)) if width > 0 && height > 0 => {
+                    (width as f64, height as f64, true)
+                }
+                _ => (
+                    track.metadata.demux_width? as f64,
+                    track.metadata.demux_height? as f64,
+                    false,
+                ),
+            };
+        if uses_runtime_display_size && matches!(user_rotation, 90 | 270) {
+            // IINA stores dwidth/dheight after undoing the explicit user rotation, then applies
+            // the net source-minus-user rotation below when deriving the window aspect.
+            std::mem::swap(&mut width, &mut height);
+        }
         if width <= 0.0 || height <= 0.0 {
             return None;
         }
-        let source_rotation = track.metadata.demux_rotation.unwrap_or_default();
-        let display_rotation = (source_rotation - self.quick_settings.video_rotate).rem_euclid(360);
+        let source_rotation = self
+            .runtime_video_params_rotation
+            .unwrap_or_else(|| track.metadata.demux_rotation.unwrap_or_default());
+        let display_rotation = (source_rotation - user_rotation).rem_euclid(360);
         if matches!(display_rotation, 90 | 270) {
             std::mem::swap(&mut width, &mut height);
         }
         Some((width, height))
+    }
+
+    /// Keeps mpv's renderer policy aligned with AppKit's fullscreen behavior.
+    ///
+    /// Windowed playback uses an aspect-constrained NSWindow and `keepaspect=no`, matching IINA.
+    /// Native fullscreen cannot constrain the screen-sized window, so mpv must letterbox there.
+    pub(crate) fn set_window_keepaspect(&mut self, enabled: bool) -> bool {
+        if self.window_keepaspect == enabled {
+            return false;
+        }
+        self.window_keepaspect = enabled;
+        self.record_mpv_flag("keepaspect", enabled);
+        true
     }
 
     pub(crate) fn window_resize_observation(&self) -> (u64, u64, bool, bool) {
@@ -1896,6 +1940,23 @@ impl PlayerState {
         self.record_plugin_mpv_events(events);
     }
 
+    /// Applies one authoritative libmpv handoff before presenting seek feedback.
+    ///
+    /// A relative/keyframe seek can land away from the optimistic command target. IINA presents
+    /// its seek OSD from `MPV_EVENT_SEEK`, after refreshing the live time property, so the visible
+    /// timestamp must come from libmpv's polled position rather than the requested delta.
+    pub fn apply_mpv_runtime_update(
+        &mut self,
+        events: &[MpvClientEvent],
+        polled_properties: &[MpvPropertyChange],
+    ) {
+        self.apply_mpv_events(events);
+        self.apply_mpv_property_changes(polled_properties);
+        if events.iter().any(|event| event.name == "seek") {
+            self.send_osd(format!("Seek {:.0}s", self.position_seconds));
+        }
+    }
+
     fn record_plugin_mpv_events(&mut self, events: &[MpvClientEvent]) {
         for event in events {
             self.mpv_event_cursor = self.mpv_event_cursor.saturating_add(1);
@@ -2000,6 +2061,9 @@ impl PlayerState {
         for event in events {
             match event.name.as_str() {
                 "start-file" => {
+                    self.runtime_display_width = None;
+                    self.runtime_display_height = None;
+                    self.runtime_video_params_rotation = None;
                     self.observe_start_file_for_window_resize();
                     self.pending_idle_reset = false;
                     self.mode = PlayerMode::Player;
@@ -2134,6 +2198,35 @@ impl PlayerState {
                     if let Some(path) = property.value.as_deref().filter(|value| !value.is_empty())
                     {
                         self.apply_runtime_path(path);
+                        refresh_needed = true;
+                    }
+                }
+                "dwidth" => {
+                    let width = property
+                        .value
+                        .as_deref()
+                        .and_then(parse_mpv_i64)
+                        .filter(|value| *value > 0);
+                    if self.runtime_display_width != width {
+                        self.runtime_display_width = width;
+                        refresh_needed = true;
+                    }
+                }
+                "dheight" => {
+                    let height = property
+                        .value
+                        .as_deref()
+                        .and_then(parse_mpv_i64)
+                        .filter(|value| *value > 0);
+                    if self.runtime_display_height != height {
+                        self.runtime_display_height = height;
+                        refresh_needed = true;
+                    }
+                }
+                "video-params/rotate" => {
+                    let rotation = property.value.as_deref().and_then(parse_mpv_i64);
+                    if self.runtime_video_params_rotation != rotation {
+                        self.runtime_video_params_rotation = rotation;
                         refresh_needed = true;
                     }
                 }
@@ -2843,6 +2936,9 @@ impl PlayerState {
         self.playback_error = None;
         self.pending_open_error = None;
         self.pending_idle_reset = false;
+        self.runtime_display_width = None;
+        self.runtime_display_height = None;
+        self.runtime_video_params_rotation = None;
     }
 
     fn begin_manually_opened_file_for_window_resize(&mut self) {
@@ -2883,6 +2979,9 @@ impl PlayerState {
         self.playlist.clear();
         self.chapters.clear();
         self.tracks = TrackGroups::default();
+        self.runtime_display_width = None;
+        self.runtime_display_height = None;
+        self.runtime_video_params_rotation = None;
         self.second_subtitle_id = 0;
         self.ab_loop = AbLoopState::default();
         self.send_osd("Stopped");
@@ -2910,6 +3009,9 @@ impl PlayerState {
         self.playlist.clear();
         self.chapters.clear();
         self.tracks = TrackGroups::default();
+        self.runtime_display_width = None;
+        self.runtime_display_height = None;
+        self.runtime_video_params_rotation = None;
         self.second_subtitle_id = 0;
         self.send_osd("Playback Error");
         true
@@ -3896,6 +3998,30 @@ mod tests {
     }
 
     #[test]
+    fn native_seek_event_presents_the_authoritative_landing_position() {
+        let mut player = PlayerState {
+            position_seconds: 266.0,
+            duration_seconds: 3600.0,
+            ..PlayerState::default()
+        };
+        player.send_osd("Seek 266s");
+        let optimistic_osd_id = player.osd_message_id;
+
+        player.apply_mpv_runtime_update(
+            &[mpv_lifecycle_event(20, "seek")],
+            &[MpvPropertyChange {
+                name: "time-pos".to_string(),
+                format: MpvFormat::Double,
+                value: Some("250.25".to_string()),
+            }],
+        );
+
+        assert_eq!(player.position_seconds, 250.25);
+        assert_eq!(player.osd_message.as_deref(), Some("Seek 250s"));
+        assert_eq!(player.osd_message_id, optimistic_osd_id + 1);
+    }
+
+    #[test]
     fn plugin_mpv_event_log_is_bounded_and_reports_cursor_gaps() {
         let mut player = PlayerState::default();
         let events = (0..(MAX_PLUGIN_MPV_EVENT_LOG + 3))
@@ -3953,6 +4079,100 @@ mod tests {
             demux_par: None,
             audio_channels: None,
         }
+    }
+
+    fn player_with_video_dimensions(width: i64, height: i64, rotation: i64) -> PlayerState {
+        let mut player = PlayerState::default();
+        let mut video = mpv_track(0, 1, "video", true);
+        video.demux_w = Some(width);
+        video.demux_h = Some(height);
+        video.demux_rotation = Some(rotation);
+        video.demux_par = Some("64:45".to_string());
+        player.apply_mpv_track_list(&[video]);
+        player
+    }
+
+    #[test]
+    fn runtime_display_dimensions_preserve_sample_aspect_ratio_and_rotation() {
+        let mut player = player_with_video_dimensions(720, 576, 0);
+        assert_eq!(player.video_size_for_display(), Some((720.0, 576.0)));
+
+        player.apply_mpv_property_changes(&[
+            mpv_property_change("dwidth", MpvFormat::Int64, Some("1024")),
+            mpv_property_change("dheight", MpvFormat::Int64, Some("576")),
+        ]);
+        assert_eq!(player.video_size_for_display(), Some((1024.0, 576.0)));
+
+        player.tracks.video[0].metadata.demux_rotation = Some(90);
+        assert_eq!(player.video_size_for_display(), Some((576.0, 1024.0)));
+    }
+
+    #[test]
+    fn runtime_display_rotation_matches_iina_two_phase_matrix() {
+        let mut player = player_with_video_dimensions(1920, 1080, 0);
+
+        // An explicit 90-degree user rotation is first applied to the raw display size. mpv's
+        // video-params rotation contains that user rotation, so the net second phase is zero.
+        player.apply_mpv_property_changes(&[
+            mpv_property_change("dwidth", MpvFormat::Int64, Some("1920")),
+            mpv_property_change("dheight", MpvFormat::Int64, Some("1080")),
+            mpv_property_change("video-rotate", MpvFormat::Int64, Some("90")),
+            mpv_property_change("video-params/rotate", MpvFormat::Int64, Some("90")),
+        ]);
+        assert_eq!(player.video_size_for_display(), Some((1080.0, 1920.0)));
+
+        // A 90-degree source rotation with no user override is applied in the second phase.
+        player.apply_mpv_property_changes(&[
+            mpv_property_change("video-rotate", MpvFormat::Int64, Some("0")),
+            mpv_property_change("video-params/rotate", MpvFormat::Int64, Some("90")),
+        ]);
+        assert_eq!(player.video_size_for_display(), Some((1080.0, 1920.0)));
+
+        // Source and user rotations both contribute: first apply the user rotation, then the
+        // remaining source rotation. Two quarter-turns restore the landscape aspect.
+        player.apply_mpv_property_changes(&[
+            mpv_property_change("video-rotate", MpvFormat::Int64, Some("90")),
+            mpv_property_change("video-params/rotate", MpvFormat::Int64, Some("180")),
+        ]);
+        assert_eq!(player.video_size_for_display(), Some((1920.0, 1080.0)));
+    }
+
+    #[test]
+    fn incomplete_or_stale_runtime_display_dimensions_fall_back_and_reset_per_file() {
+        let mut player = player_with_video_dimensions(720, 576, 0);
+        player.apply_mpv_property_changes(&[
+            mpv_property_change("dwidth", MpvFormat::Int64, Some("1024")),
+            mpv_property_change("dheight", MpvFormat::Int64, None),
+        ]);
+        assert_eq!(player.video_size_for_display(), Some((720.0, 576.0)));
+
+        player.apply_mpv_property_changes(&[
+            mpv_property_change("dwidth", MpvFormat::Int64, Some("1024")),
+            mpv_property_change("dheight", MpvFormat::Int64, Some("576")),
+            mpv_property_change("video-params/rotate", MpvFormat::Int64, Some("0")),
+        ]);
+        player.apply_mpv_events(&[mpv_lifecycle_event(6, "start-file")]);
+        assert_eq!(player.video_size_for_display(), Some((720.0, 576.0)));
+        assert_eq!(player.runtime_video_params_rotation, None);
+    }
+
+    #[test]
+    fn fullscreen_keepaspect_operations_are_deduplicated() {
+        let mut player = PlayerState::default();
+
+        assert!(!player.set_window_keepaspect(false));
+        assert!(player.set_window_keepaspect(true));
+        assert!(!player.set_window_keepaspect(true));
+        assert!(player.set_window_keepaspect(false));
+        assert!(!player.set_window_keepaspect(false));
+
+        assert_eq!(
+            player.mpv_operation_log,
+            vec![
+                set_property("keepaspect", MpvFormat::Flag, "true"),
+                set_property("keepaspect", MpvFormat::Flag, "false"),
+            ]
+        );
     }
 
     fn mpv_playlist_item(

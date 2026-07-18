@@ -355,6 +355,31 @@ int iima_native_read_player_window_context(void *windowPointer,
   return status;
 }
 
+int iima_native_set_player_window_aspect_ratio(void *windowPointer,
+                                               double width,
+                                               double height) {
+  if (windowPointer == NULL) return -1;
+  IIMARunOnMainQueueSync(^{
+    NSWindow *window = (__bridge NSWindow *)windowPointer;
+    BOOL hasValidAspect = isfinite(width) && isfinite(height) && width > 0 && height > 0;
+    NSSize targetAspect = hasValidAspect ? NSMakeSize(width, height) : NSZeroSize;
+    NSSize currentAspect = window.aspectRatio;
+    BOOL hasCurrentAspect = isfinite(currentAspect.width) && isfinite(currentAspect.height)
+      && currentAspect.width > 0 && currentAspect.height > 0;
+    BOOL hasSameAspect = !hasValidAspect && !hasCurrentAspect;
+    if (hasValidAspect && hasCurrentAspect) {
+      double currentProduct = currentAspect.width * targetAspect.height;
+      double targetProduct = targetAspect.width * currentAspect.height;
+      double comparisonScale = MAX(MAX(fabs(currentProduct), fabs(targetProduct)), 1.0);
+      hasSameAspect = fabs(currentProduct - targetProduct) <= comparisonScale * 1e-9;
+    }
+    if (!hasSameAspect) {
+      window.aspectRatio = targetAspect;
+    }
+  });
+  return 0;
+}
+
 int iima_native_set_player_window_frame(void *windowPointer,
                                         double x,
                                         double y,
@@ -1006,9 +1031,20 @@ static void IIMAEmitPlayerInput(NSEvent *event, NSString *label) {
       kind = 3;
       magnification = event.magnification;
       break;
+    case NSEventTypeMouseMoved:
+      kind = 4;
+      break;
+    case NSEventTypeKeyDown:
+      kind = 5;
+      precise = event.isARepeat ? 1 : 0;
+      stage = (int)event.keyCode;
+      break;
     default:
       return;
   }
+  unsigned long long eventPhase = kind == 5
+    ? (unsigned long long)(event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask)
+    : (unsigned long long)event.phase;
   callback(label.UTF8String,
            kind,
            point.x,
@@ -1017,7 +1053,7 @@ static void IIMAEmitPlayerInput(NSEvent *event, NSString *label) {
            deltaY,
            precise,
            natural,
-           (unsigned long long)event.phase,
+           eventPhase,
            (unsigned long long)event.momentumPhase,
            stage,
            magnification,
@@ -1042,13 +1078,16 @@ void iima_native_install_player_input_monitor(void *windowPointer,
     IIMAPlayerInputHandler = callback;
     IIMAPlayerInputContext = context;
     [IIMAPlayerInputWindows setObject:label forKey:window];
+    window.acceptsMouseMovedEvents = YES;
     if (IIMAPlayerInputMonitor != nil) return;
     NSEventMask mask = NSEventMaskLeftMouseDown |
       NSEventMaskLeftMouseDragged |
       NSEventMaskLeftMouseUp |
       NSEventMaskScrollWheel |
       NSEventMaskPressure |
-      NSEventMaskMagnify;
+      NSEventMaskMagnify |
+      NSEventMaskMouseMoved |
+      NSEventMaskKeyDown;
     IIMAPlayerInputMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:mask
       handler:^NSEvent * _Nullable(NSEvent *event) {
         NSString *targetLabel = [IIMAPlayerInputWindows objectForKey:event.window];
@@ -1081,6 +1120,10 @@ void iima_native_install_player_input_monitor(void *windowPointer,
           return event;
         }
         IIMAEmitPlayerInput(event, targetLabel);
+        // Escape is guaranteed through the native bridge even when AppKit's fullscreen responder
+        // would otherwise handle it before WebKit. Swallow only that key to prevent a duplicate
+        // DOM keydown; ordinary keys and mouse-move events retain their normal AppKit delivery.
+        if (event.type == NSEventTypeKeyDown && event.keyCode == 53) return nil;
         // Scroll and magnify are rerouted through the Tauri event so the WebView
         // can apply IINA's hit-test rules without losing AppKit phase metadata.
         if (event.type == NSEventTypeScrollWheel || event.type == NSEventTypeMagnify) return nil;
