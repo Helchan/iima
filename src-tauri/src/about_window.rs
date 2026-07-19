@@ -4,8 +4,8 @@ use std::process::Command;
 use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 
 pub(crate) const ABOUT_WINDOW_LABEL: &str = "about-iina";
-pub(crate) const IINA_VERSION: &str = "0.9.3";
-pub(crate) const IINA_BUILD: &str = "93";
+pub(crate) const IINA_VERSION: &str = "0.9.4";
+pub(crate) const IINA_BUILD: &str = "94";
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -155,8 +155,8 @@ mod tests {
     fn about_window_matches_project_geometry_identity_and_runtime_copy() {
         let source = include_str!("about_window.rs");
         assert_eq!(ABOUT_WINDOW_LABEL, "about-iina");
-        assert_eq!(IINA_VERSION, "0.9.3");
-        assert_eq!(IINA_BUILD, "93");
+        assert_eq!(IINA_VERSION, "0.9.4");
+        assert_eq!(IINA_BUILD, "94");
         assert!(source.contains(".inner_size(640.0, 400.0)"));
         assert!(source.contains(".title_bar_style(tauri::TitleBarStyle::Overlay)"));
         assert!(source.contains(".hidden_title(true)"));

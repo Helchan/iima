@@ -42,6 +42,23 @@ omissions; allowing them into a package is an acceptance-design omission.
 - Shortcut execution is serialized so repeated volume/seek input observes the state returned by the
   preceding command instead of racing on one stale frontend snapshot.
 
+## 0.9.4 native event crash correction
+
+The first `0.9.3` packaged build exposed another bridge-specific acceptance gap: moving the pointer
+into a player window could terminate the process. `IIMAEmitPlayerInput` classified `MouseMoved`
+correctly, but then read `NSEvent.phase` and `NSEvent.momentumPhase` as if every non-key event were a
+scroll event. AppKit raises an Objective-C exception when those selectors are used on a mouse-moved
+event; allowing that exception to cross the native C callback boundary ends in an abort.
+
+- Scroll events alone read both `phase` and `momentumPhase`; magnify reads only `phase`; key-down
+  uses the shared phase field for modifier flags; mouse movement and pressure read neither value.
+- The source contract rejects unconditional phase access, while a compiled AppKit harness creates
+  real `MouseMoved` and `KeyDown` events and invokes the production emitter. This closes the gap that
+  JavaScript/browser mocks could not exercise.
+- Release acceptance now requires opening the final `.app` from Finder, entering the real playback
+  window with the pointer, observing continued playback, and confirming that no new macOS crash
+  report was generated. The final `0.9.4` package passed that sequence.
+
 ## Required release matrix
 
 | Boundary | Packaged acceptance |

@@ -372,8 +372,8 @@ const resolvedReferenceExtension = structuredClone(referenceSafariInfo.NSExtensi
 resolvedReferenceExtension.NSExtensionPrincipalClass = "OpenInIINA.SafariExtensionHandler";
 assert.equal(safariInfo.CFBundlePackageType, "XPC!");
 assert.equal(safariInfo.LSMinimumSystemVersion, "10.13");
-assert.equal(safariInfo.CFBundleShortVersionString, "0.9.3");
-assert.equal(safariInfo.CFBundleVersion, "93");
+assert.equal(safariInfo.CFBundleShortVersionString, "0.9.4");
+assert.equal(safariInfo.CFBundleVersion, "94");
 assert.deepEqual(safariInfo.NSExtension, resolvedReferenceExtension);
 assert.deepEqual(
   safariInfo.SFSafariExtensionBundleIdentifiersToUninstall,

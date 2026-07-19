@@ -106,6 +106,9 @@ jobs:
       - name: Verify bundled key binding profiles
         run: npm run keybindings:test
 
+      - name: Verify native player input against AppKit
+        run: npm run native-input:test
+
       - name: Fetch Rust dependencies
         run: cargo fetch --locked --manifest-path src-tauri/Cargo.toml
 

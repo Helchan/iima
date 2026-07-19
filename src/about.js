@@ -21,8 +21,8 @@ const ABOUT_DOCUMENT_LINKS = new Map([
 ]);
 
 const mockRuntime = {
-  version: "0.9.3",
-  build: "93",
+  version: "0.9.4",
+  build: "94",
   mpvVersion: null,
   ffmpegVersion: null,
 };

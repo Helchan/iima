@@ -1015,6 +1015,8 @@ static void IIMAEmitPlayerInput(NSEvent *event, NSString *label) {
   int natural = 0;
   int stage = 0;
   double magnification = 0;
+  unsigned long long eventPhase = 0;
+  unsigned long long momentumPhase = 0;
   switch (event.type) {
     case NSEventTypeScrollWheel:
       kind = 1;
@@ -1022,6 +1024,8 @@ static void IIMAEmitPlayerInput(NSEvent *event, NSString *label) {
       deltaY = event.scrollingDeltaY;
       precise = event.hasPreciseScrollingDeltas ? 1 : 0;
       natural = event.isDirectionInvertedFromDevice ? 1 : 0;
+      eventPhase = (unsigned long long)event.phase;
+      momentumPhase = (unsigned long long)event.momentumPhase;
       break;
     case NSEventTypePressure:
       kind = 2;
@@ -1030,6 +1034,7 @@ static void IIMAEmitPlayerInput(NSEvent *event, NSString *label) {
     case NSEventTypeMagnify:
       kind = 3;
       magnification = event.magnification;
+      eventPhase = (unsigned long long)event.phase;
       break;
     case NSEventTypeMouseMoved:
       kind = 4;
@@ -1038,13 +1043,12 @@ static void IIMAEmitPlayerInput(NSEvent *event, NSString *label) {
       kind = 5;
       precise = event.isARepeat ? 1 : 0;
       stage = (int)event.keyCode;
+      eventPhase =
+        (unsigned long long)(event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask);
       break;
     default:
       return;
   }
-  unsigned long long eventPhase = kind == 5
-    ? (unsigned long long)(event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask)
-    : (unsigned long long)event.phase;
   callback(label.UTF8String,
            kind,
            point.x,
@@ -1054,7 +1058,7 @@ static void IIMAEmitPlayerInput(NSEvent *event, NSString *label) {
            precise,
            natural,
            eventPhase,
-           (unsigned long long)event.momentumPhase,
+           momentumPhase,
            stage,
            magnification,
            IIMAPlayerInputContext);

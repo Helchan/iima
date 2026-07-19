@@ -21,6 +21,10 @@ const safariInfo = readFileSync(
   "utf8",
 );
 const packageSource = readFileSync(join(root, "scripts", "package-macos.mjs"), "utf8");
+const workflowSource = readFileSync(
+  join(root, ".github", "workflows", "build-packages.yml"),
+  "utf8",
+);
 const referenceShared = readFileSync(
   join(root, "参考", "iina", "Configs", "Shared.xcconfig"),
   "utf8",
@@ -28,20 +32,27 @@ const referenceShared = readFileSync(
 
 assert.deepEqual(reference, { marketingVersion: "1.3.5", buildVersion: "141" });
 assert.match(referenceShared, /#include "Deployment\.xcconfig"/);
-assert.equal(packageJson.version, "0.9.3");
+assert.equal(packageJson.version, "0.9.4");
 assert.equal(tauriConfig.version, packageJson.version);
 assert.equal(cargoPackageVersion(cargoToml), packageJson.version);
 assert.equal(cargoLockPackageVersion(cargoLock, "iima"), packageJson.version);
-assert.match(safariInfo, /<key>CFBundleShortVersionString<\/key>\s*<string>0\.9\.3<\/string>/);
-assert.match(safariInfo, /<key>CFBundleVersion<\/key>\s*<string>93<\/string>/);
+assert.match(safariInfo, /<key>CFBundleShortVersionString<\/key>\s*<string>0\.9\.4<\/string>/);
+assert.match(safariInfo, /<key>CFBundleVersion<\/key>\s*<string>94<\/string>/);
 assert.match(packageSource, /readReferencePackageIdentity\(root\)/);
-assert.match(packageSource, /const appBuildVersion = "93"/);
+assert.match(packageSource, /const appBuildVersion = "94"/);
 assert.match(packageSource, /referencePackageIdentity\.marketingVersion !== "1\.3\.5"/);
 assert.match(packageSource, /\["CFBundleShortVersionString", appVersion\]/);
 assert.match(packageSource, /\["CFBundleVersion", appBuildVersion\]/);
 assert.match(packageSource, /shortVersion: appVersion/);
 assert.match(packageSource, /bundleVersion: appBuildVersion/);
 assert.match(packageSource, /`IINA_\$\{appVersion\}_\$\{dmgArchitecture\}_\$\{dmgVariant\}\.dmg`/);
+assert.match(packageSource, /run\("hdiutil", \["verify", pendingDmgPath\]\);/);
+assert.match(packageSource, /run\("hdiutil", \["imageinfo", pendingDmgPath\]\);/);
+assert.match(
+  workflowSource,
+  /\n  macos-arm64:[\s\S]*?npm run native-input:test[\s\S]*?\n  release:/,
+  "macOS releases must run the compiled AppKit native-input regression gate",
+);
 assert.equal(tauriConfig.identifier, "io.iima.player", "Tauri bundle isolation must remain owned");
 
-console.log("Project identity is 0.9.3 build 93 with IINA 1.3.5 build 141 retained as reference");
+console.log("Project identity is 0.9.4 build 94 with IINA 1.3.5 build 141 retained as reference");

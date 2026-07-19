@@ -50,8 +50,8 @@ assert.match(xib, /itemSize" width="32" height="32"/);
 assert.match(avatarXib, /frame" x="0\.0" y="0\.0" width="50" height="50"/);
 assert.match(avatarSwift, /cornerRadius = imageView\.frame\.width \/ 2/);
 
-assert.match(backend, /const IINA_VERSION: &str = "0\.9\.3"/);
-assert.match(backend, /const IINA_BUILD: &str = "93"/);
+assert.match(backend, /const IINA_VERSION: &str = "0\.9\.4"/);
+assert.match(backend, /const IINA_BUILD: &str = "94"/);
 assert.match(backend, /\.inner_size\(640\.0, 400\.0\)/);
 assert.match(backend, /\.min_inner_size\(640\.0, 400\.0\)/);
 assert.match(backend, /\.max_inner_size\(640\.0, 400\.0\)/);

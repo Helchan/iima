@@ -45,7 +45,7 @@ const tauriConfig = JSON.parse(readFileSync(tauriConfigPath, "utf8"));
 const referencePackageIdentity = readReferencePackageIdentity(root);
 const appName = tauriConfig.productName || "IINA";
 const appVersion = tauriConfig.version || referencePackageIdentity.marketingVersion;
-const appBuildVersion = "93";
+const appBuildVersion = "94";
 const appIdentifier = tauriConfig.identifier || "io.iima.player";
 if (
   referencePackageIdentity.marketingVersion !== "1.3.5" ||
@@ -752,6 +752,7 @@ end tell
     pendingDmgPath,
   ]);
   run("hdiutil", ["verify", pendingDmgPath]);
+  run("hdiutil", ["imageinfo", pendingDmgPath]);
 
   // Keep any previous release artifact intact until its replacement is complete
   // and verified, then swap the new image into the established output path.

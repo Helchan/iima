@@ -753,7 +753,11 @@ mod tests {
             "kind = 5;",
             "precise = event.isARepeat ? 1 : 0;",
             "stage = (int)event.keyCode;",
-            "event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask",
+            "unsigned long long eventPhase = 0;",
+            "unsigned long long momentumPhase = 0;",
+            "eventPhase = (unsigned long long)event.phase;",
+            "momentumPhase = (unsigned long long)event.momentumPhase;",
+            "eventPhase =\n        (unsigned long long)(event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask);",
             "window.acceptsMouseMovedEvents = YES;",
             "NSEventMaskMouseMoved |",
             "NSEventMaskKeyDown;",
@@ -764,6 +768,14 @@ mod tests {
                 "missing native input contract: {contract}"
             );
         }
+        assert!(
+            !source.contains(": (unsigned long long)event.phase;"),
+            "mouse/pressure events must not read gesture-only phase metadata"
+        );
+        assert!(
+            !source.contains("           (unsigned long long)event.momentumPhase,"),
+            "non-scroll events must not read scroll-only momentum metadata"
+        );
     }
 
     #[test]

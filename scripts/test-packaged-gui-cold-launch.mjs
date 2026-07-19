@@ -92,6 +92,8 @@ function requireFreshPackage() {
     "src-tauri/src/commands.rs",
     "src-tauri/src/launch.rs",
     "src-tauri/src/mpv.rs",
+    "src-tauri/src/native_window.m",
+    "src-tauri/src/native_window_behavior.rs",
     "src-tauri/src/native_video.m",
     "src-tauri/src/native_video.rs",
   ].map((path) => join(root, path)).concat(sharedBuildSources);
