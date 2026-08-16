@@ -105,8 +105,8 @@ Final artifact paths:
 Current local `0.9.4` package evidence:
 
 - app identity `0.9.4` / build `94`, arm64 main executable, passing deep strict ad-hoc signing;
-- DMG: `57,710,933` bytes, SHA-256 `b0ba41c4bcded7691953c2eb5ebbffba42881e6078fc04bd02c679a11c681846`, passing `hdiutil verify`;
-- main executable SHA-256 `85c8ac4319d28db9d286f5b6393157affc426c729d4d31c06638d0c18b4f9b21`;
+- DMG: `57,710,333` bytes, SHA-256 `5136af3236804457c2bdb0a60a1ba55e051e5b7eaa77faa91ce51f74c2ef5673`, passing `hdiutil verify`;
+- main executable SHA-256 `e5a6b3f31d583e840d99c49636959a20474a6f05870caaf43ef5f654149e0b40`;
 - CLI SHA-256 `e4ad76c61df9d4dc72f5a4ebde33db55254b8edb91c91dd838d405b255ac6a70`.
 
 ## GitHub Actions packages
@@ -132,8 +132,8 @@ desktop shell packages successfully; it does not claim macOS playback-feature pa
 
 Final artifact evidence:
 
-- `IINA.app`: `141216 KiB`; arm64 `IINA.app/Contents/MacOS/iima` is `18,578,912` bytes, SHA-256 `85c8ac4319d28db9d286f5b6393157affc426c729d4d31c06638d0c18b4f9b21`.
+- `IINA.app`: `141216 KiB`; arm64 `IINA.app/Contents/MacOS/iima` is `18,578,960` bytes, SHA-256 `e5a6b3f31d583e840d99c49636959a20474a6f05870caaf43ef5f654149e0b40`.
 - `iina-cli`: arm64, `516,976` bytes, SHA-256 `e4ad76c61df9d4dc72f5a4ebde33db55254b8edb91c91dd838d405b255ac6a70`.
-- DMG: `57,710,933` bytes, SHA-256 `b0ba41c4bcded7691953c2eb5ebbffba42881e6078fc04bd02c679a11c681846`; UDZO GUID/HFS+, compressed bytes `57,693,662`, CRC32 `E035C3FF`, and `hdiutil verify` reports `VALID`.
+- DMG: `57,710,333` bytes, SHA-256 `5136af3236804457c2bdb0a60a1ba55e051e5b7eaa77faa91ce51f74c2ef5673`; UDZO GUID/HFS+, compressed bytes `57,693,062`, CRC32 `F668B2EC`, and `hdiutil verify` reports `VALID`.
 
 Final verification evidence: `npm run verify:offline` passes the current source with 535 Rust library tests total (531 passed, 4 explicitly ignored external hardware/fixture gates), 6 CLI tests, the frontend/native/plugin suites, and the all-target check. The native-video registry main-thread C ABI harness and all ten native video frame/shape/live-resize scenarios pass, including held-drag `NSEventTrackingRunLoopMode` updates, next-main-turn child geometry, bounded exception recovery, same-label ABA protection, and fullscreen corner-mask restoration. The native-input gate now compiles and executes an AppKit harness with real `MouseMoved` and `KeyDown` events, proving event-specific phase access cannot raise an Objective-C exception. Cold launch passes 3/3 in `1273/975/973 ms`; the final strict stdin 10-second gate and real packaged WebKit probe pass; the real selector passes 20/20 with a 30-second MP4 helper result (`796474` bitrate, 1 track, 0 chapters, JPEG `160x90`); About reports mpv `0.38.0` and FFmpeg `7.0.1`. The final `0.9.4` package was opened by double-clicking `IINA.app` in Finder, resumed real video playback, accepted pointer movement over the player, and quit normally with no new crash report. Earlier packaged interaction evidence also covers pause/resume, fullscreen, live aspect-constrained resize, one-title chrome, actual mouse-driven PIP/Playlist/Quick Settings state changes, focus-ring suppression, arrow cursor, and title dragging. The historical `0.9.3` resize pass kept every tested window within one-pixel rounding of 16:9, including a deliberately skewed drag, and playback continued throughout.

@@ -10,6 +10,8 @@ tag releases independently.
 
 The goal is not to create a similar media player. The goal is to reproduce IINA 1.3.5 behavior, UI, interaction, integration, and packaging while replacing the implementation stack with Tauri.
 
+Development builds must also follow the repository's [开发构建与磁盘空间规约](../开发构建与磁盘空间规约.md). That policy limits disposable Cargo debug/test growth while preserving release artifacts and every verification gate defined here.
+
 ## First Principles
 
 - Preserve the product contract: visible UI, menus, shortcuts, preferences, playback behavior, plugin behavior, file associations, URL scheme, CLI, and bundle artifacts must match IINA 1.3.5.
@@ -102,11 +104,11 @@ Repository acceptance now reports evidence by level rather than a single “100%
 ## Artifact Targets and Verification Status
 
 - Final app path: `src-tauri/target/release/bundle/macos/IINA.app`
-- Final main executable: `src-tauri/target/release/bundle/macos/IINA.app/Contents/MacOS/iima` — arm64, `18,578,912` bytes, SHA-256 `85c8ac4319d28db9d286f5b6393157affc426c729d4d31c06638d0c18b4f9b21`
+- Final main executable: `src-tauri/target/release/bundle/macos/IINA.app/Contents/MacOS/iima` — arm64, `18,578,960` bytes, SHA-256 `e5a6b3f31d583e840d99c49636959a20474a6f05870caaf43ef5f654149e0b40`
 - Final CLI executable: `src-tauri/target/release/bundle/macos/IINA.app/Contents/MacOS/iina-cli` — arm64, `516,976` bytes, SHA-256 `e4ad76c61df9d4dc72f5a4ebde33db55254b8edb91c91dd838d405b255ac6a70`
 - Final app size: `141216 KiB` by `du`
-- Final DMG path: `src-tauri/target/release/bundle/dmg/IINA_0.9.4_aarch64_bundled_libmpv.dmg` — `57,710,933` bytes, SHA-256 `b0ba41c4bcded7691953c2eb5ebbffba42881e6078fc04bd02c679a11c681846`
-- Final DMG image: UDZO GUID/HFS+, compressed bytes `57,693,662`, CRC32 `E035C3FF`; `hdiutil verify` reports `VALID`
+- Final DMG path: `src-tauri/target/release/bundle/dmg/IINA_0.9.4_aarch64_bundled_libmpv.dmg` — `57,710,333` bytes, SHA-256 `5136af3236804457c2bdb0a60a1ba55e051e5b7eaa77faa91ce51f74c2ef5673`
+- Final DMG image: UDZO GUID/HFS+, compressed bytes `57,693,062`, CRC32 `F668B2EC`; `hdiutil verify` reports `VALID`
 - The host and Safari extension package identity is project version `0.9.4`, build `94`; IINA `1.3.5` build `141` remains the pinned reference identity, and the isolated Tauri bundle identifier remains `io.iima.player`.
 - The final package contains 71 dylibs and 57 localization directories; libmpv, the Safari app extension, and Sparkle 2.9.4 are universal, while the app and CLI are arm64. `codesign --verify --deep --strict` passes.
 - Expected reference Sparkle 2.9.4 binary SHA-256 for the package gate: `923646d11e245d9ccd6f94fa3b74524459cacd11d34ab9ac109090a73c2f0429`
@@ -168,6 +170,6 @@ Final packaged/runtime evidence:
 - plist inspection on the generated `.app`: 26 document types, 37 imported UTIs, 2 exported plugin UTIs, `iina` URL scheme, and 22 document icons
 - extension contract tests execute the Chrome/Firefox page/link/video/audio menus and all popup URL modes, confirm `new_window=1`, exercise Safari link user-info, compare the 1.3.5 Safari resources, build an offline `arm64+x86_64` temporary `.appex`, and verify its `Contents/PlugIns` layout, SafariServices link, plist, strict ad-hoc signature, and sandbox entitlement
 - `codesign --verify --deep --strict --verbose=2` on the final `.app`
-- `hdiutil verify` plus `hdiutil imageinfo` on the final UDZO DMG (`VALID`, compressed bytes `57,693,662`, CRC32 `E035C3FF`)
+- `hdiutil verify` plus `hdiutil imageinfo` on the final UDZO DMG (`VALID`, compressed bytes `57,693,062`, CRC32 `F668B2EC`)
 
 External acceptance is reserved for unavailable physical hardware/display combinations, real accounts/Keychain/network providers, third-party ecosystem catalogs, installed browser stores, Apple signing/notarization, project-owned HTTPS updater delivery, and exhaustive cross-host/per-locale visual review. Finder/Services/pasteboard/Trash/drop plus ordinary mouse, keyboard, focus, fullscreen, title, and resize behavior are local packaged-interaction gates whenever the current host can exercise them.

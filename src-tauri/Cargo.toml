@@ -5,7 +5,10 @@ edition = "2021"
 
 [lib]
 name = "iima_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# This repository only ships the macOS desktop binaries. The executable links
+# this crate as an rlib; staticlib/cdylib outputs are mobile embedding artifacts
+# that multiply large debug outputs without being consumed by the package gate.
+crate-type = ["rlib"]
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
@@ -28,3 +31,20 @@ tauri-plugin-dialog = "2"
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 cc = "1"
+
+# Keep useful line-level information for project code, but do not emit full
+# debug symbols for every third-party dependency. Tests are batch verification
+# work, so disabling their incremental cache avoids retaining many stale copies
+# of the large iima_lib compilation graph.
+[profile.dev]
+debug = 1
+
+[profile.dev.package."*"]
+debug = 0
+
+[profile.test]
+debug = 1
+incremental = false
+
+[profile.test.package."*"]
+debug = 0
