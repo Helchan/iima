@@ -1,7 +1,9 @@
 .DS_Store
 .idea/
+.cursor/
 node_modules/
 dist/
+artifacts/
 src-tauri/target/
 src-tauri/gen/
 参考/
